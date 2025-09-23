@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import './SearchPanel.css';
 
 const EXAMPLE_COMPANIES = [
-  { name: 'OpenAI', url: 'https://job-boards.greenhouse.io/openai' },
+  { name: 'OpenAI', url: 'https://jobs.ashbyhq.com/openai' },
   { name: 'Anthropic', url: 'https://job-boards.greenhouse.io/anthropic' },
   { name: 'Stripe', url: 'https://job-boards.greenhouse.io/stripe' },
   { name: 'Coinbase', url: 'https://job-boards.greenhouse.io/coinbase' },

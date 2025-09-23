@@ -19,11 +19,25 @@ logger = logging.getLogger(__name__)
 
 
 class TalentScraper:
-    """Universal scraper for Greenhouse job boards"""
+    """Universal scraper for multiple job board providers (Greenhouse, Ashby, etc.)"""
 
     def __init__(self):
         self.browser = None
         self.context = None
+
+    def detect_provider(self, url: str) -> str:
+        """Detect which job board provider is being used"""
+        if 'greenhouse.io' in url:
+            return 'greenhouse'
+        elif 'ashbyhq.com' in url:
+            return 'ashby'
+        elif 'lever.co' in url:
+            return 'lever'
+        elif 'workable.com' in url:
+            return 'workable'
+        else:
+            # Default to greenhouse strategy for unknown providers
+            return 'unknown'
 
     async def initialize(self):
         """Initialize the browser"""
@@ -110,6 +124,301 @@ class TalentScraper:
             }
 
         return None
+
+    async def scrape_jobs(self, company_url: str, fetch_details: bool = True, max_detail_fetches: int = 20) -> List[Dict]:
+        """Universal job scraper that routes to the appropriate provider-specific scraper"""
+        provider = self.detect_provider(company_url)
+        logger.info(f"Detected provider: {provider} for URL: {company_url}")
+
+        if provider == 'ashby':
+            return await self.scrape_ashby_jobs(company_url, fetch_details, max_detail_fetches)
+        else:
+            # Default to Greenhouse strategy for greenhouse and unknown providers
+            return await self.scrape_greenhouse_jobs(company_url, fetch_details, max_detail_fetches)
+
+    async def scrape_ashby_jobs(self, company_url: str, fetch_details: bool = True, max_detail_fetches: int = 20) -> List[Dict]:
+        """Scrape jobs from an Ashby-powered careers page"""
+        page = await self.context.new_page()
+        jobs = []
+
+        try:
+            logger.info(f"Scraping Ashby site: {company_url}")
+            await page.goto(company_url, wait_until='domcontentloaded', timeout=30000)
+
+            # Ashby sites often load content dynamically, wait for it
+            await page.wait_for_timeout(5000)
+
+            # Some Ashby sites require scrolling to load all jobs
+            await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+            await page.wait_for_timeout(2000)
+
+            # Ashby-specific selectors - more comprehensive
+            job_selectors = [
+                '[data-testid="job-board-job-card"]',  # Ashby's test ID
+                '.ashby-job-posting-item',
+                '.ashby-job-posting-title',
+                'div[role="listitem"]',
+                'a[href*="/openai/"]',  # Links containing company name
+                'a[href^="/"]',  # All relative links
+                '.job-card',
+                '.posting',
+                '.job-posting',
+                'div[class*="JobCard"]',
+                'div[class*="job-card"]',
+                'article',
+                '[data-qa="job-card"]',
+                'h3 > a',  # Links inside h3 headers
+                'h4 > a',  # Links inside h4 headers
+            ]
+
+            # Extract company name from URL for dynamic matching
+            company_name = company_url.split('/')[-1] if '/' in company_url else 'jobs'
+
+            job_elements = None
+            for selector in job_selectors:
+                job_elements = await page.query_selector_all(selector)
+                if job_elements and len(job_elements) > 0:
+                    # Filter out non-job elements
+                    valid_elements = []
+                    for elem in job_elements:
+                        text = await elem.text_content()
+                        href = await elem.get_attribute('href') if await elem.evaluate('el => el.tagName === "A"') else None
+
+                        # Check if it's a job link
+                        if text and len(text.strip()) > 5:
+                            if href and (f'/{company_name}/' in href or href.startswith(f'/{company_name}/')):
+                                valid_elements.append(elem)
+                            elif not href and not any(skip in text.lower() for skip in ['cookie', 'privacy', 'terms', 'careers at']):
+                                valid_elements.append(elem)
+
+                    if valid_elements:
+                        job_elements = valid_elements
+                        logger.info(f"Found {len(job_elements)} jobs using Ashby selector: {selector}")
+                        break
+
+            if not job_elements:
+                # Try to find job listings in the main content
+                content = await page.content()
+                soup = BeautifulSoup(content, 'html.parser')
+
+                # Look for links that contain the company name or /jobs/ in the href
+                job_links = []
+                all_links = soup.find_all('a', href=True)
+                for link in all_links:
+                    href = link['href']
+                    text = link.get_text(strip=True)
+                    # Check if it's likely a job link
+                    if text and len(text) > 5 and (
+                        f'/{company_name}/' in href or
+                        href.startswith(f'/{company_name}/') or
+                        '/jobs/' in href
+                    ) and not any(skip in text.lower() for skip in ['cookie', 'privacy', 'terms', 'careers']):
+                        job_links.append(link)
+
+                if job_links:
+                    logger.info(f"Found {len(job_links)} job links via href pattern")
+                    for link in job_links:
+                        job = await self.parse_ashby_job_link(link, page)
+                        if job:
+                            jobs.append(job)
+                    return jobs
+
+            # Parse job elements
+            detail_fetch_count = 0
+            for i, element in enumerate(job_elements):
+                try:
+                    job = await self.parse_ashby_job_element(element, page)
+                    if job:
+                        # Try to get salary from job detail page if not found
+                        if fetch_details and job.get('url') and not job.get('salary') and detail_fetch_count < max_detail_fetches:
+                            try:
+                                logger.info(f"Fetching salary details for Ashby job {i+1}/{len(job_elements)}: {job['title'][:30]}...")
+                                details = await self.scrape_job_details(job['url'])
+                                if details.get('salary'):
+                                    job['salary'] = details['salary']
+                                    logger.info(f"Found salary: ${details['salary']['min']:,} - ${details['salary']['max']:,}")
+                                detail_fetch_count += 1
+                            except Exception as e:
+                                logger.debug(f"Could not fetch job details: {e}")
+                        jobs.append(job)
+                except Exception as e:
+                    logger.error(f"Error parsing Ashby job element: {e}")
+                    continue
+
+            logger.info(f"Scraped {len(jobs)} jobs from Ashby site: {company_url}")
+
+        except Exception as e:
+            logger.error(f"Error scraping Ashby site {company_url}: {e}")
+        finally:
+            await page.close()
+
+        return jobs
+
+    async def parse_ashby_job_element(self, element, page) -> Optional[Dict]:
+        """Parse a single Ashby job element"""
+        try:
+            # Get full text and HTML
+            full_text = await element.text_content()
+            if not full_text:
+                return None
+
+            html = await element.inner_html()
+            soup = BeautifulSoup(html, 'html.parser')
+
+            # Get job title - Ashby often uses h3 or strong tags
+            title = None
+            title_elem = soup.find(['h3', 'h4', 'h2', 'strong'])
+            if title_elem:
+                title = title_elem.get_text(strip=True)
+            else:
+                # Try to find the first link text
+                link = soup.find('a')
+                if link:
+                    title = link.get_text(strip=True)
+
+            if not title:
+                # Get first non-empty line
+                lines = [line.strip() for line in full_text.strip().split('\n') if line.strip()]
+                if lines:
+                    title = lines[0]
+
+            if not title:
+                return None
+
+            # Get job URL
+            url = None
+            link = soup.find('a', href=True)
+            if link:
+                url = link['href']
+                if url and not url.startswith('http'):
+                    base_url = page.url.split('/jobs')[0]
+                    url = f"{base_url}{url}" if url.startswith('/') else f"{base_url}/{url}"
+
+            # Parse location - Ashby often shows it as a separate element
+            location = None
+            # Look for location patterns
+            location_patterns = [
+                r'📍\s*([^•\n]+)',  # Location with pin emoji
+                r'Location:\s*([^•\n]+)',
+                r'•\s*([^•]+)\s*•',  # Between bullet points
+            ]
+
+            for pattern in location_patterns:
+                match = re.search(pattern, full_text)
+                if match:
+                    location = match.group(1).strip()
+                    break
+
+            if not location:
+                # Look for location in specific elements
+                for elem in soup.find_all(['span', 'div', 'p']):
+                    text = elem.get_text(strip=True)
+                    if text and len(text) < 100:
+                        lower_text = text.lower()
+                        if any(loc in lower_text for loc in ['remote', 'hybrid', 'on-site', 'onsite']) or \
+                           any(city in lower_text for city in ['new york', 'san francisco', 'london', 'seattle', 'austin']):
+                            location = text
+                            break
+
+            # Parse department - Ashby often includes this in the listing
+            department = None
+            dept_patterns = [
+                r'Department:\s*([^•\n]+)',
+                r'Team:\s*([^•\n]+)',
+            ]
+
+            for pattern in dept_patterns:
+                match = re.search(pattern, full_text)
+                if match:
+                    department = match.group(1).strip()
+                    break
+
+            if not department:
+                # Try to extract from job title
+                title_lower = title.lower()
+                if 'engineer' in title_lower or 'developer' in title_lower:
+                    department = 'Engineering'
+                elif 'product' in title_lower:
+                    department = 'Product'
+                elif 'design' in title_lower:
+                    department = 'Design'
+                elif 'sales' in title_lower or 'account' in title_lower:
+                    department = 'Sales'
+                elif 'marketing' in title_lower or 'growth' in title_lower:
+                    department = 'Marketing'
+                elif 'data' in title_lower or 'analyst' in title_lower:
+                    department = 'Data & Analytics'
+                else:
+                    department = 'Not specified'
+
+            # Get salary info
+            salary_info = self.extract_salary(full_text)
+
+            return {
+                'title': title.strip(),
+                'url': url,
+                'location': location.strip() if location else 'Not specified',
+                'department': department.strip() if department else 'Not specified',
+                'salary': salary_info,
+                'provider': 'ashby',
+                'scraped_at': datetime.now().isoformat(),
+                'raw_text': full_text
+            }
+
+        except Exception as e:
+            logger.error(f"Error parsing Ashby job element: {e}")
+            return None
+
+    async def parse_ashby_job_link(self, link_soup, page) -> Optional[Dict]:
+        """Parse an Ashby job from a link element"""
+        try:
+            title = link_soup.get_text(strip=True)
+            if not title:
+                return None
+
+            url = link_soup.get('href', '')
+            if url and not url.startswith('http'):
+                base_url = page.url.split('/jobs')[0]
+                url = f"{base_url}{url}" if url.startswith('/') else f"{base_url}/{url}"
+
+            # Try to get more info from parent or siblings
+            parent = link_soup.parent
+            full_text = parent.get_text(strip=True) if parent else title
+
+            # Extract location if present
+            location = 'Not specified'
+            location_match = re.search(r'([A-Z][a-z]+(?:\s+[A-Z][a-z]+)*(?:,\s*[A-Z]{2})?)', full_text)
+            if location_match:
+                potential_loc = location_match.group(1)
+                if any(city in potential_loc.lower() for city in ['remote', 'york', 'francisco', 'london', 'seattle']):
+                    location = potential_loc
+
+            # Extract department from title
+            department = 'Not specified'
+            title_lower = title.lower()
+            if 'engineer' in title_lower or 'developer' in title_lower:
+                department = 'Engineering'
+            elif 'product' in title_lower:
+                department = 'Product'
+            elif 'design' in title_lower:
+                department = 'Design'
+            elif 'sales' in title_lower:
+                department = 'Sales'
+            elif 'marketing' in title_lower:
+                department = 'Marketing'
+
+            return {
+                'title': title,
+                'url': url,
+                'location': location,
+                'department': department,
+                'salary': None,
+                'provider': 'ashby',
+                'scraped_at': datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error parsing Ashby job link: {e}")
+            return None
 
     async def scrape_greenhouse_jobs(self, company_url: str, fetch_details: bool = True, max_detail_fetches: int = 20) -> List[Dict]:
         """Scrape jobs from a Greenhouse-powered careers page"""
@@ -367,6 +676,7 @@ class TalentScraper:
                 'location': location.strip() if location else 'Not specified',
                 'department': department.strip() if department else 'Not specified',
                 'salary': salary_info,
+                'provider': 'greenhouse',
                 'scraped_at': datetime.now().isoformat(),
                 'raw_text': full_text
             }
@@ -471,12 +781,12 @@ class TalentScraper:
 
 
 async def scrape_company(company_url: str) -> List[Dict]:
-    """Main function to scrape a company's jobs"""
+    """Main function to scrape a company's jobs from any supported provider"""
     scraper = TalentScraper()
     await scraper.initialize()
 
     try:
-        jobs = await scraper.scrape_greenhouse_jobs(company_url)
+        jobs = await scraper.scrape_jobs(company_url)
         return jobs
     finally:
         await scraper.close()
