@@ -8,7 +8,7 @@ const EXAMPLE_COMPANIES = [
   { name: 'Coinbase', url: 'https://job-boards.greenhouse.io/coinbase' },
   { name: 'Discord', url: 'https://job-boards.greenhouse.io/discord' },
   { name: 'Figma', url: 'https://job-boards.greenhouse.io/figma' },
-  { name: 'Databricks', url: 'https://job-boards.greenhouse.io/databricks' },
+  { name: 'Databricks', url: 'https://www.databricks.com/company/careers/open-positions' },
   { name: 'Notion', url: 'https://job-boards.greenhouse.io/notion' },
   { name: 'Canva', url: 'https://job-boards.greenhouse.io/canva' },
   { name: 'Scale AI', url: 'https://job-boards.greenhouse.io/scaleai' },

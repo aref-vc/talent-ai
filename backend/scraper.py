@@ -33,6 +33,8 @@ class TalentScraper:
             return 'ashby'
         elif 'stripe.com/jobs' in url:
             return 'stripe'
+        elif 'databricks.com' in url:
+            return 'databricks'
         elif 'lever.co' in url:
             return 'lever'
         elif 'workable.com' in url:
@@ -136,6 +138,8 @@ class TalentScraper:
             return await self.scrape_ashby_jobs(company_url, fetch_details, max_detail_fetches)
         elif provider == 'stripe':
             return await self.scrape_stripe_jobs(company_url, fetch_details, max_detail_fetches)
+        elif provider == 'databricks':
+            return await self.scrape_databricks_jobs(company_url, fetch_details, max_detail_fetches)
         else:
             # Default to Greenhouse strategy for greenhouse and unknown providers
             return await self.scrape_greenhouse_jobs(company_url, fetch_details, max_detail_fetches)
@@ -677,6 +681,275 @@ class TalentScraper:
             }
         except Exception as e:
             logger.error(f"Error parsing Stripe job link: {e}")
+            return None
+
+    async def scrape_databricks_jobs(self, company_url: str, fetch_details: bool = True, max_detail_fetches: int = 20) -> List[Dict]:
+        """Scrape jobs from Databricks custom job board"""
+        page = await self.context.new_page()
+        jobs = []
+
+        try:
+            logger.info(f"Scraping Databricks site: {company_url}")
+            await page.goto(company_url, wait_until='networkidle', timeout=30000)
+
+            # Wait for content to load
+            await page.wait_for_timeout(3000)
+
+            # Databricks-specific selectors - they use links with job ID patterns
+            job_selectors = [
+                'a[href*="/company/careers/"][href*="-"]',  # Job listing links with IDs
+                'a[href*="careers.databricks.com"]',  # External career links
+                '.job-listing',
+                '.job-card',
+                '.position-card',
+                'div[class*="JobCard"]',
+                'div[class*="job-item"]',
+                'article[class*="position"]',
+                '[data-testid="job-card"]',
+                '.careers-position',
+                'li[class*="job"]',
+                'div[role="listitem"]',
+                'a[class*="position-link"]',
+            ]
+
+            job_elements = None
+            for selector in job_selectors:
+                job_elements = await page.query_selector_all(selector)
+                if job_elements and len(job_elements) > 0:
+                    # Filter out non-job elements
+                    valid_elements = []
+                    for elem in job_elements:
+                        text = await elem.text_content()
+                        if text and len(text.strip()) > 10 and not any(skip in text.lower() for skip in ['cookie', 'privacy', 'terms', 'careers at', 'join us']):
+                            valid_elements.append(elem)
+
+                    if valid_elements:
+                        job_elements = valid_elements
+                        logger.info(f"Found {len(job_elements)} jobs using Databricks selector: {selector}")
+                        break
+
+            if not job_elements:
+                # Try to find job links by pattern
+                content = await page.content()
+                soup = BeautifulSoup(content, 'html.parser')
+
+                # Look for links to job listings
+                job_links = []
+                all_links = soup.find_all('a', href=True)
+                for link in all_links:
+                    href = link['href']
+                    text = link.get_text(strip=True)
+                    # Databricks job URLs have specific patterns with job IDs
+                    # Example: /company/careers/product/corporate-development--ventures-manager-8160187002
+                    if text and len(text) > 15 and len(text) < 150:  # Job titles are typically this length
+                        # Check if it's a job link (has careers path with numeric ID at the end)
+                        if '/company/careers/' in href and re.search(r'-\d{7,}$', href):
+                            if not any(skip in text.lower() for skip in ['cookie', 'privacy', 'terms', 'see all', 'view all', 'learn more', 'careers at', 'join us']):
+                                job_links.append(link)
+                        # Also check for external careers.databricks.com links
+                        elif 'careers.databricks.com' in href:
+                            job_links.append(link)
+
+                if job_links:
+                    logger.info(f"Found {len(job_links)} job links via pattern matching")
+                    for link in job_links:
+                        job = await self.parse_databricks_job_link(link, page)
+                        if job:
+                            jobs.append(job)
+                    return jobs
+
+            # Parse job elements
+            detail_fetch_count = 0
+            for i, element in enumerate(job_elements):
+                try:
+                    job = await self.parse_databricks_job_element(element, page)
+                    if job:
+                        # Try to get salary from job detail page if not found
+                        if fetch_details and job.get('url') and not job.get('salary') and detail_fetch_count < max_detail_fetches:
+                            try:
+                                logger.info(f"Fetching salary details for Databricks job {i+1}/{len(job_elements)}: {job['title'][:30]}...")
+                                details = await self.scrape_job_details(job['url'])
+                                if details.get('salary'):
+                                    job['salary'] = details['salary']
+                                    logger.info(f"Found salary: ${details['salary']['min']:,} - ${details['salary']['max']:,}")
+                                detail_fetch_count += 1
+                            except Exception as e:
+                                logger.debug(f"Could not fetch job details: {e}")
+                        jobs.append(job)
+                except Exception as e:
+                    logger.error(f"Error parsing Databricks job element: {e}")
+                    continue
+
+            logger.info(f"Scraped {len(jobs)} jobs from Databricks site: {company_url}")
+
+        except Exception as e:
+            logger.error(f"Error scraping Databricks site {company_url}: {e}")
+        finally:
+            await page.close()
+
+        return jobs
+
+    async def parse_databricks_job_element(self, element, page) -> Optional[Dict]:
+        """Parse a single Databricks job element"""
+        try:
+            # For Databricks, the element is usually an anchor tag
+            # Get the href attribute directly
+            href = await element.get_attribute('href') if element else None
+
+            # Get full text
+            full_text = await element.text_content()
+            if not full_text:
+                return None
+
+            # Databricks embeds location in the title text
+            # Format: "Job Title Location, Country" or "Job TitleLocation, Country"
+            # Split and clean the title
+            lines = [line.strip() for line in full_text.strip().split('\n') if line.strip()]
+
+            # The full text often contains the title and location together
+            combined_text = ' '.join(lines)
+
+            # Try to separate title from location
+            # Look for common location patterns at the end
+            location = None
+            title = combined_text
+
+            # Common location patterns
+            location_cities = ['San Francisco', 'New York', 'Seattle', 'Amsterdam', 'Berlin', 'Munich',
+                             'London', 'Singapore', 'Bengaluru', 'Belgrade', 'Mountain View', 'Toronto',
+                             'Paris', 'Tokyo', 'Sydney', 'Tel Aviv', 'Dublin', 'Remote']
+
+            for city in location_cities:
+                if city in combined_text:
+                    # Extract location and clean title
+                    loc_index = combined_text.find(city)
+                    if loc_index > 0:
+                        title = combined_text[:loc_index].strip()
+                        location = combined_text[loc_index:].strip()
+                        # Clean up any trailing commas or countries from title
+                        title = re.sub(r'[,\s]+$', '', title)
+                        break
+
+            # If no location found, check for country names
+            if not location:
+                countries = ['USA', 'United States', 'India', 'Netherlands', 'Germany', 'UK',
+                           'United Kingdom', 'France', 'Japan', 'Canada', 'Australia', 'Israel', 'Serbia']
+                for country in countries:
+                    if country in combined_text:
+                        loc_index = combined_text.rfind(',')  # Find last comma before country
+                        if loc_index > 0:
+                            title = combined_text[:loc_index].strip()
+                            location = combined_text[loc_index+1:].strip()
+                            break
+
+            # Build proper URL
+            url = None
+            if href:
+                if href.startswith('http'):
+                    url = href
+                else:
+                    # Databricks uses relative URLs
+                    url = f"https://www.databricks.com{href}" if href.startswith('/') else f"https://www.databricks.com/{href}"
+
+            # Parse department from title
+            department = 'Not specified'
+            title_lower = title.lower()
+            if 'engineer' in title_lower or 'developer' in title_lower:
+                department = 'Engineering'
+            elif 'product' in title_lower and 'engineer' not in title_lower:
+                department = 'Product'
+            elif 'design' in title_lower:
+                department = 'Design'
+            elif 'sales' in title_lower or 'account' in title_lower:
+                department = 'Sales'
+            elif 'marketing' in title_lower or 'growth' in title_lower:
+                department = 'Marketing'
+            elif 'data scientist' in title_lower or 'analyst' in title_lower:
+                department = 'Data & Analytics'
+            elif 'support' in title_lower or 'success' in title_lower:
+                department = 'Customer Support'
+            elif 'legal' in title_lower or 'counsel' in title_lower or 'compliance' in title_lower:
+                department = 'Legal & Compliance'
+            elif 'finance' in title_lower or 'accounting' in title_lower:
+                department = 'Finance'
+            elif 'operations' in title_lower or ' ops' in title_lower:
+                department = 'Operations'
+            elif 'people' in title_lower or 'hr' in title_lower or 'recruiting' in title_lower:
+                department = 'People & HR'
+            elif 'security' in title_lower:
+                department = 'Security'
+
+            # Get salary info
+            salary_info = self.extract_salary(full_text)
+
+            return {
+                'title': title.strip(),
+                'url': url,
+                'location': location.strip() if location else 'Not specified',
+                'department': department,
+                'salary': salary_info,
+                'provider': 'databricks',
+                'scraped_at': datetime.now().isoformat(),
+                'raw_text': full_text
+            }
+
+        except Exception as e:
+            logger.error(f"Error parsing Databricks job element: {e}")
+            return None
+
+    async def parse_databricks_job_link(self, link_soup, page) -> Optional[Dict]:
+        """Parse a Databricks job from a link element"""
+        try:
+            title = link_soup.get_text(strip=True)
+            if not title or len(title) < 5:
+                return None
+
+            url = link_soup.get('href', '')
+            if url and not url.startswith('http'):
+                url = f"https://www.databricks.com{url}" if url.startswith('/') else f"https://www.databricks.com/{url}"
+
+            # Try to get more context from parent
+            parent = link_soup.parent
+            full_text = parent.get_text(strip=True) if parent else title
+
+            # Extract location if present
+            location = 'Not specified'
+            if 'remote' in full_text.lower():
+                location = 'Remote'
+            else:
+                # Look for city names
+                for city in ['New York', 'San Francisco', 'Seattle', 'Amsterdam', 'Berlin', 'Munich', 'London', 'Singapore', 'Bengaluru']:
+                    if city.lower() in full_text.lower():
+                        location = city
+                        break
+
+            # Extract department from title
+            department = 'Not specified'
+            title_lower = title.lower()
+            if 'engineer' in title_lower or 'developer' in title_lower:
+                department = 'Engineering'
+            elif 'product' in title_lower and 'engineer' not in title_lower:
+                department = 'Product'
+            elif 'design' in title_lower:
+                department = 'Design'
+            elif 'sales' in title_lower:
+                department = 'Sales'
+            elif 'marketing' in title_lower:
+                department = 'Marketing'
+            elif 'data' in title_lower:
+                department = 'Data & Analytics'
+
+            return {
+                'title': title,
+                'url': url,
+                'location': location,
+                'department': department,
+                'salary': None,
+                'provider': 'databricks',
+                'scraped_at': datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error parsing Databricks job link: {e}")
             return None
 
     async def scrape_greenhouse_jobs(self, company_url: str, fetch_details: bool = True, max_detail_fetches: int = 20) -> List[Dict]:
