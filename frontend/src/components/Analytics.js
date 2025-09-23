@@ -147,7 +147,7 @@ function Analytics({ data, companyName }) {
               data.salary_ranges.with_salary,
               data.salary_ranges.without_salary
             ],
-            backgroundColor: ['#50fa7b', '#ff5555'],
+            backgroundColor: ['hsl(17, 82%, 54%)', 'hsl(34, 6%, 33%)'],
             borderWidth: 0
           }]
         },
