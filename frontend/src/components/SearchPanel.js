@@ -4,7 +4,7 @@ import './SearchPanel.css';
 const EXAMPLE_COMPANIES = [
   { name: 'OpenAI', url: 'https://jobs.ashbyhq.com/openai' },
   { name: 'Anthropic', url: 'https://job-boards.greenhouse.io/anthropic' },
-  { name: 'Stripe', url: 'https://job-boards.greenhouse.io/stripe' },
+  { name: 'Stripe', url: 'https://stripe.com/jobs/search' },
   { name: 'Coinbase', url: 'https://job-boards.greenhouse.io/coinbase' },
   { name: 'Discord', url: 'https://job-boards.greenhouse.io/discord' },
   { name: 'Figma', url: 'https://job-boards.greenhouse.io/figma' },

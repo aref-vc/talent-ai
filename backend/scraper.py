@@ -31,6 +31,8 @@ class TalentScraper:
             return 'greenhouse'
         elif 'ashbyhq.com' in url:
             return 'ashby'
+        elif 'stripe.com/jobs' in url:
+            return 'stripe'
         elif 'lever.co' in url:
             return 'lever'
         elif 'workable.com' in url:
@@ -132,6 +134,8 @@ class TalentScraper:
 
         if provider == 'ashby':
             return await self.scrape_ashby_jobs(company_url, fetch_details, max_detail_fetches)
+        elif provider == 'stripe':
+            return await self.scrape_stripe_jobs(company_url, fetch_details, max_detail_fetches)
         else:
             # Default to Greenhouse strategy for greenhouse and unknown providers
             return await self.scrape_greenhouse_jobs(company_url, fetch_details, max_detail_fetches)
@@ -418,6 +422,261 @@ class TalentScraper:
             }
         except Exception as e:
             logger.error(f"Error parsing Ashby job link: {e}")
+            return None
+
+    async def scrape_stripe_jobs(self, company_url: str, fetch_details: bool = True, max_detail_fetches: int = 20) -> List[Dict]:
+        """Scrape jobs from Stripe's custom job board"""
+        page = await self.context.new_page()
+        jobs = []
+
+        try:
+            logger.info(f"Scraping Stripe site: {company_url}")
+            await page.goto(company_url, wait_until='networkidle', timeout=30000)
+
+            # Wait for content to load
+            await page.wait_for_timeout(3000)
+
+            # Stripe-specific selectors
+            job_selectors = [
+                'a[href^="/jobs/listing"]',  # Stripe job listing links
+                '.JobsListings__item',
+                '.JobListing',
+                'div[data-testid="job-listing"]',
+                'article.job-listing',
+                'div[class*="job-card"]',
+                'div[class*="JobCard"]',
+                'a[class*="JobLink"]',
+                '[role="listitem"] a',
+                '.jobs-list__item',
+                'tbody tr',  # Table rows for job listings
+            ]
+
+            job_elements = None
+            for selector in job_selectors:
+                job_elements = await page.query_selector_all(selector)
+                if job_elements and len(job_elements) > 0:
+                    logger.info(f"Found {len(job_elements)} jobs using Stripe selector: {selector}")
+                    break
+
+            if not job_elements:
+                # Try to find job links by pattern
+                content = await page.content()
+                soup = BeautifulSoup(content, 'html.parser')
+
+                # Look for links to job listings
+                job_links = []
+                all_links = soup.find_all('a', href=True)
+                for link in all_links:
+                    href = link['href']
+                    text = link.get_text(strip=True)
+                    # Stripe job URLs typically contain /jobs/listing/
+                    if text and len(text) > 5 and ('/jobs/listing/' in href or 'job' in href.lower()):
+                        if not any(skip in text.lower() for skip in ['cookie', 'privacy', 'terms', 'see all', 'view all']):
+                            job_links.append(link)
+
+                if job_links:
+                    logger.info(f"Found {len(job_links)} job links via pattern matching")
+                    for link in job_links:
+                        job = await self.parse_stripe_job_link(link, page)
+                        if job:
+                            jobs.append(job)
+                    return jobs
+
+            # Parse job elements
+            detail_fetch_count = 0
+            for i, element in enumerate(job_elements):
+                try:
+                    job = await self.parse_stripe_job_element(element, page)
+                    if job:
+                        # Try to get salary from job detail page if not found
+                        if fetch_details and job.get('url') and not job.get('salary') and detail_fetch_count < max_detail_fetches:
+                            try:
+                                logger.info(f"Fetching salary details for Stripe job {i+1}/{len(job_elements)}: {job['title'][:30]}...")
+                                details = await self.scrape_job_details(job['url'])
+                                if details.get('salary'):
+                                    job['salary'] = details['salary']
+                                    logger.info(f"Found salary: ${details['salary']['min']:,} - ${details['salary']['max']:,}")
+                                detail_fetch_count += 1
+                            except Exception as e:
+                                logger.debug(f"Could not fetch job details: {e}")
+                        jobs.append(job)
+                except Exception as e:
+                    logger.error(f"Error parsing Stripe job element: {e}")
+                    continue
+
+            logger.info(f"Scraped {len(jobs)} jobs from Stripe site: {company_url}")
+
+        except Exception as e:
+            logger.error(f"Error scraping Stripe site {company_url}: {e}")
+        finally:
+            await page.close()
+
+        return jobs
+
+    async def parse_stripe_job_element(self, element, page) -> Optional[Dict]:
+        """Parse a single Stripe job element (table row)"""
+        try:
+            # Get full HTML to parse table structure
+            html = await element.inner_html()
+            soup = BeautifulSoup(html, 'html.parser')
+
+            # Stripe uses table cells: title | department | location
+            cells = soup.find_all('td')
+
+            if not cells or len(cells) < 3:
+                # Fallback to generic parsing if not a table row
+                full_text = await element.text_content()
+                if not full_text:
+                    return None
+
+                # Try to extract title from link
+                title = None
+                link = soup.find('a')
+                if link:
+                    title = link.get_text(strip=True)
+
+                if not title:
+                    lines = [line.strip() for line in full_text.strip().split('\n') if line.strip()]
+                    if lines:
+                        title = lines[0]
+
+                if not title:
+                    return None
+
+                department = 'Not specified'
+                location = 'Not specified'
+            else:
+                # Parse table cells
+                # Cell 0: Title with link
+                title_cell = cells[0]
+                title_link = title_cell.find('a')
+                title = title_link.get_text(strip=True) if title_link else title_cell.get_text(strip=True)
+
+                # Cell 1: Department
+                dept_cell = cells[1]
+                department = dept_cell.get_text(strip=True)
+                if not department or department == '':
+                    department = 'Not specified'
+
+                # Cell 2: Location (with flag icon)
+                location_cell = cells[2]
+                # Look for span with location name
+                location_span = location_cell.find('span', class_='JobsListings__locationDisplayName')
+                if location_span:
+                    location = location_span.get_text(strip=True)
+                else:
+                    location = location_cell.get_text(strip=True)
+
+                if not location or location == '':
+                    location = 'Not specified'
+
+            # Get job URL
+            url = None
+            link = soup.find('a', href=True)
+            if link:
+                url = link['href']
+                if url and not url.startswith('http'):
+                    # Stripe URLs are relative to stripe.com
+                    url = f"https://stripe.com{url}" if url.startswith('/') else f"https://stripe.com/{url}"
+
+            # If department wasn't found in table, infer from title
+            if department == 'Not specified' and title:
+                title_lower = title.lower()
+                if 'engineer' in title_lower or 'developer' in title_lower:
+                    department = 'Engineering'
+                elif 'product' in title_lower and 'engineer' not in title_lower:
+                    department = 'Product'
+                elif 'design' in title_lower:
+                    department = 'Design'
+                elif 'sales' in title_lower or 'account executive' in title_lower:
+                    department = 'Sales'
+                elif 'marketing' in title_lower or 'growth' in title_lower:
+                    department = 'Marketing'
+                elif 'data' in title_lower or 'analyst' in title_lower:
+                    department = 'Data & Analytics'
+                elif 'support' in title_lower or 'success' in title_lower:
+                    department = 'Customer Support'
+                elif 'legal' in title_lower or 'counsel' in title_lower or 'compliance' in title_lower:
+                    department = 'Legal & Compliance'
+                elif 'finance' in title_lower or 'accounting' in title_lower:
+                    department = 'Finance'
+                elif 'operations' in title_lower or ' ops ' in title_lower:
+                    department = 'Operations'
+                elif 'people' in title_lower or 'hr' in title_lower or 'recruiting' in title_lower:
+                    department = 'People & HR'
+
+            # Get salary info from full text
+            full_text = await element.text_content() if element else ''
+            salary_info = self.extract_salary(full_text)
+
+            return {
+                'title': title.strip(),
+                'url': url,
+                'location': location.strip() if location else 'Not specified',
+                'department': department,
+                'salary': salary_info,
+                'provider': 'stripe',
+                'scraped_at': datetime.now().isoformat(),
+                'raw_text': full_text
+            }
+
+        except Exception as e:
+            logger.error(f"Error parsing Stripe job element: {e}")
+            return None
+
+    async def parse_stripe_job_link(self, link_soup, page) -> Optional[Dict]:
+        """Parse a Stripe job from a link element"""
+        try:
+            title = link_soup.get_text(strip=True)
+            if not title or len(title) < 5:
+                return None
+
+            url = link_soup.get('href', '')
+            if url and not url.startswith('http'):
+                url = f"https://stripe.com{url}" if url.startswith('/') else f"https://stripe.com/{url}"
+
+            # Try to get more context from parent
+            parent = link_soup.parent
+            full_text = parent.get_text(strip=True) if parent else title
+
+            # Extract location if present
+            location = 'Not specified'
+            if 'remote' in full_text.lower():
+                location = 'Remote'
+            else:
+                # Look for city names
+                for city in ['New York', 'San Francisco', 'Seattle', 'Chicago', 'Dublin', 'London', 'Singapore', 'Tokyo']:
+                    if city.lower() in full_text.lower():
+                        location = city
+                        break
+
+            # Extract department from title
+            department = 'Not specified'
+            title_lower = title.lower()
+            if 'engineer' in title_lower or 'developer' in title_lower:
+                department = 'Engineering'
+            elif 'product' in title_lower:
+                department = 'Product'
+            elif 'design' in title_lower:
+                department = 'Design'
+            elif 'sales' in title_lower:
+                department = 'Sales'
+            elif 'marketing' in title_lower:
+                department = 'Marketing'
+            elif 'data' in title_lower:
+                department = 'Data & Analytics'
+
+            return {
+                'title': title,
+                'url': url,
+                'location': location,
+                'department': department,
+                'salary': None,
+                'provider': 'stripe',
+                'scraped_at': datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error parsing Stripe job link: {e}")
             return None
 
     async def scrape_greenhouse_jobs(self, company_url: str, fetch_details: bool = True, max_detail_fetches: int = 20) -> List[Dict]:
