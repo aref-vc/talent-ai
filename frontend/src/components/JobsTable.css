@@ -1,0 +1,131 @@
+.jobs-table-container {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1.5rem;
+  overflow: hidden;
+}
+
+.table-controls {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.filter-input {
+  background: var(--bg-primary);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0.75rem;
+  color: var(--text-primary);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.9rem;
+  min-width: 300px;
+  transition: all 0.3s ease;
+}
+
+.filter-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(100, 255, 218, 0.1);
+}
+
+.job-count {
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+}
+
+.table-wrapper {
+  overflow-x: auto;
+}
+
+.jobs-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.jobs-table thead {
+  background: var(--bg-primary);
+  border-bottom: 2px solid var(--border);
+}
+
+.jobs-table th {
+  padding: 1rem;
+  text-align: left;
+  color: var(--text-secondary);
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  user-select: none;
+}
+
+.jobs-table th:hover {
+  color: var(--accent);
+}
+
+.jobs-table tbody tr {
+  border-bottom: 1px solid var(--border);
+  transition: all 0.3s ease;
+}
+
+.jobs-table tbody tr:hover {
+  background: rgba(100, 255, 218, 0.05);
+}
+
+.jobs-table td {
+  padding: 1rem;
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.job-title {
+  font-weight: 600;
+  color: var(--accent);
+}
+
+.has-salary {
+  color: var(--success);
+  font-weight: 600;
+}
+
+.no-salary {
+  color: var(--text-secondary);
+  font-style: italic;
+}
+
+.view-btn {
+  display: inline-block;
+  background: transparent;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  padding: 0.4rem 0.8rem;
+  border-radius: 4px;
+  text-decoration: none;
+  font-size: 0.8rem;
+  transition: all 0.3s ease;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.view-btn:hover {
+  background: var(--accent);
+  color: var(--bg-primary);
+  transform: translateX(2px);
+}
+
+@media (max-width: 768px) {
+  .table-controls {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: stretch;
+  }
+
+  .filter-input {
+    width: 100%;
+    min-width: auto;
+  }
+}
