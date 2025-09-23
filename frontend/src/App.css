@@ -5,16 +5,29 @@
 }
 
 :root {
-  --bg-primary: #0a0e27;
-  --bg-secondary: #151932;
-  --bg-card: #1e2139;
-  --text-primary: #ffffff;
-  --text-secondary: #8892b0;
-  --accent: #64ffda;
-  --accent-hover: #4cd9b8;
-  --border: #2a2d47;
-  --error: #ff5555;
-  --success: #50fa7b;
+  /* New color palette */
+  --primary: hsl(17, 82%, 54%);
+  --secondary: hsl(34, 6%, 23%);
+  --accent: hsl(39, 18%, 76%);
+  --background: hsl(30, 6%, 14%);
+  --foreground: hsl(45, 100%, 97%);
+  --muted: hsl(34, 6%, 23%);
+  --card: hsl(30, 5%, 16%);
+  --destructive: hsl(17, 82%, 54%);
+  --border: hsl(34, 6%, 23%);
+  --input: hsl(34, 6%, 23%);
+  --ring: hsl(17, 82%, 54%);
+
+  /* Legacy mappings */
+  --bg-primary: var(--background);
+  --bg-secondary: var(--card);
+  --bg-card: var(--card);
+  --text-primary: var(--foreground);
+  --text-secondary: var(--accent);
+  --accent-hover: var(--primary);
+  --border-color: var(--border);
+  --error: var(--destructive);
+  --success: hsl(142, 71%, 45%);
 }
 
 body {
@@ -41,7 +54,7 @@ body {
 .App-header h1 {
   font-size: 2.5rem;
   font-weight: 700;
-  background: linear-gradient(135deg, var(--accent), var(--text-primary));
+  background: linear-gradient(135deg, var(--primary), var(--accent));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   margin-bottom: 0.5rem;
@@ -77,11 +90,11 @@ body {
 }
 
 .tab:hover:not(:disabled) {
-  color: var(--accent);
+  color: var(--primary);
 }
 
 .tab.active {
-  color: var(--accent);
+  color: var(--primary);
 }
 
 .tab.active::after {
@@ -91,7 +104,7 @@ body {
   left: 0;
   right: 0;
   height: 2px;
-  background: var(--accent);
+  background: var(--primary);
 }
 
 .tab:disabled {
@@ -128,7 +141,7 @@ body {
   width: 50px;
   height: 50px;
   border: 3px solid var(--border);
-  border-top: 3px solid var(--accent);
+  border-top: 3px solid var(--primary);
   border-radius: 50%;
   animation: spin 1s linear infinite;
 }
@@ -156,7 +169,7 @@ body {
 
 .results-header h2 {
   font-size: 1.8rem;
-  color: var(--accent);
+  color: var(--primary);
   text-transform: uppercase;
   letter-spacing: 2px;
 }
@@ -181,9 +194,10 @@ body {
 }
 
 .export-btn:hover {
-  background: var(--accent);
-  color: var(--bg-primary);
+  background: var(--primary);
+  color: var(--background);
   transform: translateY(-2px);
+  border-color: var(--primary);
 }
 
 .analytics-container {
@@ -192,7 +206,7 @@ body {
 
 .analytics-container h2 {
   font-size: 1.8rem;
-  color: var(--accent);
+  color: var(--primary);
   text-transform: uppercase;
   letter-spacing: 2px;
   margin-bottom: 2rem;

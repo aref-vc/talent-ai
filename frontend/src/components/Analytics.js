@@ -14,7 +14,7 @@ function Analytics({ data, companyName }) {
     chartsRef.current = {};
 
     // Chart defaults
-    Chart.defaults.color = '#8892b0';
+    Chart.defaults.color = 'hsl(39, 18%, 76%)';
     Chart.defaults.font.family = 'JetBrains Mono';
     Chart.defaults.font.size = 11;
 
@@ -28,14 +28,14 @@ function Analytics({ data, companyName }) {
           datasets: [{
             data: Object.values(data.departments).slice(0, 8),
             backgroundColor: [
-              '#64ffda',
-              '#f07178',
-              '#c3e88d',
-              '#ffcb6b',
-              '#82aaff',
-              '#c792ea',
-              '#89ddff',
-              '#b2ccd6'
+              'hsl(17, 82%, 54%)',
+              'hsl(17, 82%, 64%)',
+              'hsl(39, 18%, 76%)',
+              'hsl(39, 18%, 66%)',
+              'hsl(34, 6%, 33%)',
+              'hsl(34, 6%, 43%)',
+              'hsl(30, 6%, 24%)',
+              'hsl(30, 6%, 34%)'
             ],
             borderWidth: 0
           }]
@@ -85,7 +85,7 @@ function Analytics({ data, companyName }) {
           datasets: [{
             label: 'Jobs',
             data: sortedLocations.map(([,count]) => count),
-            backgroundColor: '#64ffda',
+            backgroundColor: 'hsl(17, 82%, 54%)',
             borderWidth: 0
           }]
         },

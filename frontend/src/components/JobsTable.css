@@ -27,8 +27,8 @@
 
 .filter-input:focus {
   outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 2px rgba(100, 255, 218, 0.1);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--ring);
 }
 
 .job-count {
@@ -64,7 +64,7 @@
 }
 
 .jobs-table th:hover {
-  color: var(--accent);
+  color: var(--primary);
 }
 
 .jobs-table tbody tr {
@@ -73,7 +73,7 @@
 }
 
 .jobs-table tbody tr:hover {
-  background: rgba(100, 255, 218, 0.05);
+  background: rgba(238, 115, 53, 0.05);
 }
 
 .jobs-table td {
@@ -84,7 +84,7 @@
 
 .job-title {
   font-weight: 600;
-  color: var(--accent);
+  color: var(--primary);
 }
 
 .has-salary {
@@ -100,8 +100,8 @@
 .view-btn {
   display: inline-block;
   background: transparent;
-  border: 1px solid var(--accent);
-  color: var(--accent);
+  border: 1px solid var(--primary);
+  color: var(--primary);
   padding: 0.4rem 0.8rem;
   border-radius: 4px;
   text-decoration: none;
@@ -112,8 +112,8 @@
 }
 
 .view-btn:hover {
-  background: var(--accent);
-  color: var(--bg-primary);
+  background: var(--primary);
+  color: var(--background);
   transform: translateX(2px);
 }
 

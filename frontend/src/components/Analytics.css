@@ -21,14 +21,14 @@
 
 .stat-card:hover {
   transform: translateY(-5px);
-  border-color: var(--accent);
-  box-shadow: 0 10px 30px rgba(100, 255, 218, 0.1);
+  border-color: var(--primary);
+  box-shadow: 0 10px 30px rgba(238, 115, 53, 0.1);
 }
 
 .stat-value {
   font-size: 2.5rem;
   font-weight: 700;
-  color: var(--accent);
+  color: var(--primary);
   margin-bottom: 0.5rem;
 }
 
@@ -73,7 +73,7 @@
 }
 
 .salary-max {
-  color: var(--accent);
+  color: var(--primary);
 }
 
 .salary-separator {
