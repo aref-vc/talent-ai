@@ -32,8 +32,8 @@
 
 body {
   font-family: 'JetBrains Mono', monospace;
-  background: linear-gradient(135deg, var(--bg-primary) 0%, var(--bg-secondary) 100%);
-  color: var(--text-primary);
+  background: var(--background);
+  color: var(--foreground);
   min-height: 100vh;
 }
 
@@ -44,7 +44,7 @@ body {
 }
 
 .App-header {
-  background: rgba(30, 33, 57, 0.8);
+  background: var(--card);
   backdrop-filter: blur(10px);
   border-bottom: 1px solid var(--border);
   padding: 2rem;
