@@ -75,14 +75,25 @@ class TalentScraper:
                 'raw': match.group(0)
             }
 
-        # Pattern 2: $XXX,XXX - $XXX,XXX
+        # Pattern 2: $XXX,XXX - $XXX,XXX (with or without spaces around dash)
         match = re.search(r'\$(\d{1,3}(?:,\d{3})*)\s*[-–—]\s*\$(\d{1,3}(?:,\d{3})*)', text)
         if match:
             min_sal = match.group(1).replace(',', '')
             max_sal = match.group(2).replace(',', '')
+            # Check if these are unrealistically low values (likely hourly or missing 'k')
+            min_val = int(min_sal)
+            max_val = int(max_sal)
+            # If values are under 1000 and appear to be hourly rates, multiply by 1000 (assume 'k')
+            if min_val < 1000 and max_val < 1000 and 'per hour' in text.lower():
+                # This is hourly rate, keep as is
+                pass
+            elif min_val < 1000 and max_val < 1000:
+                # Likely missing 'k', multiply by 1000
+                min_val *= 1000
+                max_val *= 1000
             return {
-                'min': int(min_sal),
-                'max': int(max_sal),
+                'min': min_val,
+                'max': max_val,
                 'raw': match.group(0)
             }
 
@@ -97,7 +108,18 @@ class TalentScraper:
                 'raw': match.group(0)
             }
 
-        # Pattern 4: XXX,XXX - XXX,XXX USD/per year
+        # Pattern 4: $XXX,XXX per year (single value, common in Notion)
+        match = re.search(r'\$(\d{1,3}(?:,\d{3})*)\s*(?:per year|annually|/year|\/yr)', text, re.IGNORECASE)
+        if match:
+            salary_val = int(match.group(1).replace(',', ''))
+            # For single values, create a range around it (±10%)
+            return {
+                'min': int(salary_val * 0.9),
+                'max': int(salary_val * 1.1),
+                'raw': match.group(0)
+            }
+
+        # Pattern 5: XXX,XXX - XXX,XXX USD/per year
         match = re.search(r'(\d{1,3}(?:,\d{3})*)\s*[-–—]\s*(\d{1,3}(?:,\d{3})*)\s*(?:USD|per year|annually)', text, re.IGNORECASE)
         if match:
             min_sal = match.group(1).replace(',', '')
@@ -237,17 +259,25 @@ class TalentScraper:
                 try:
                     job = await self.parse_ashby_job_element(element, page)
                     if job:
+                        # For Notion specifically, always try to fetch details for salary
+                        # Since Notion puts salary info in job descriptions
+                        is_notion = 'notion' in company_url.lower()
+
                         # Try to get salary from job detail page if not found
-                        if fetch_details and job.get('url') and not job.get('salary') and detail_fetch_count < max_detail_fetches:
-                            try:
-                                logger.info(f"Fetching salary details for Ashby job {i+1}/{len(job_elements)}: {job['title'][:30]}...")
-                                details = await self.scrape_job_details(job['url'])
-                                if details.get('salary'):
-                                    job['salary'] = details['salary']
-                                    logger.info(f"Found salary: ${details['salary']['min']:,} - ${details['salary']['max']:,}")
-                                detail_fetch_count += 1
-                            except Exception as e:
-                                logger.debug(f"Could not fetch job details: {e}")
+                        if fetch_details and job.get('url') and detail_fetch_count < max_detail_fetches:
+                            # For Notion, always fetch details; for others, only if no salary found
+                            if is_notion or not job.get('salary'):
+                                try:
+                                    logger.info(f"Fetching details for Ashby job {i+1}/{len(job_elements)}: {job['title'][:30]}...")
+                                    details = await self.scrape_job_details(job['url'])
+                                    if details.get('salary'):
+                                        job['salary'] = details['salary']
+                                        logger.info(f"Found salary: ${details['salary']['min']:,} - ${details['salary']['max']:,}")
+                                    elif is_notion:
+                                        logger.info(f"No salary found for Notion job: {job['title'][:30]}")
+                                    detail_fetch_count += 1
+                                except Exception as e:
+                                    logger.debug(f"Could not fetch job details: {e}")
                         jobs.append(job)
                 except Exception as e:
                     logger.error(f"Error parsing Ashby job element: {e}")
@@ -295,12 +325,43 @@ class TalentScraper:
 
             # Get job URL
             url = None
-            link = soup.find('a', href=True)
-            if link:
-                url = link['href']
+
+            # First check if the element itself has an href attribute (for Ashby)
+            element_href = await element.get_attribute('href')
+            if element_href:
+                url = element_href
                 if url and not url.startswith('http'):
-                    base_url = page.url.split('/jobs')[0]
-                    url = f"{base_url}{url}" if url.startswith('/') else f"{base_url}/{url}"
+                    # For Ashby, construct full URL properly
+                    if 'ashbyhq.com' in page.url:
+                        # Get the base URL (e.g., https://jobs.ashbyhq.com)
+                        parsed_url = page.url.split('/')
+                        base_url = '/'.join(parsed_url[:3])  # Gets https://jobs.ashbyhq.com
+                        # Add the company name if the URL doesn't have it
+                        if '/notion' not in url and 'notion' in page.url.lower():
+                            url = f"{base_url}/notion{url}" if url.startswith('/') else f"{base_url}/notion/{url}"
+                        else:
+                            url = f"{base_url}{url}" if url.startswith('/') else f"{base_url}/{url}"
+                    else:
+                        base_url = page.url.split('/jobs')[0]
+                        url = f"{base_url}{url}" if url.startswith('/') else f"{base_url}/{url}"
+            else:
+                # Otherwise look for a link within the element
+                link = soup.find('a', href=True)
+                if link:
+                    url = link['href']
+                    if url and not url.startswith('http'):
+                        if 'ashbyhq.com' in page.url:
+                            # Get the base URL (e.g., https://jobs.ashbyhq.com)
+                            parsed_url = page.url.split('/')
+                            base_url = '/'.join(parsed_url[:3])  # Gets https://jobs.ashbyhq.com
+                            # Add the company name if the URL doesn't have it
+                            if '/notion' not in url and 'notion' in page.url.lower():
+                                url = f"{base_url}/notion{url}" if url.startswith('/') else f"{base_url}/notion/{url}"
+                            else:
+                                url = f"{base_url}{url}" if url.startswith('/') else f"{base_url}/{url}"
+                        else:
+                            base_url = page.url.split('/jobs')[0]
+                            url = f"{base_url}{url}" if url.startswith('/') else f"{base_url}/{url}"
 
             # Parse location - Ashby often shows it as a separate element
             location = None
@@ -1245,6 +1306,14 @@ class TalentScraper:
             await page.goto(job_url, wait_until='networkidle', timeout=20000)
             await page.wait_for_timeout(1000)
 
+            # Check if this is an Ashby page and wait for dynamic content
+            if 'ashbyhq.com' in job_url:
+                # Wait for job description content to load
+                try:
+                    await page.wait_for_selector('[class*="description"], [class*="content"], main', timeout=3000)
+                except:
+                    pass
+
             # Get page content
             content = await page.content()
             soup = BeautifulSoup(content, 'html.parser')
@@ -1258,25 +1327,43 @@ class TalentScraper:
             # Look for salary in specific sections first
             salary = None
 
-            # Method 1: Look for compensation/salary sections
-            for section in soup.find_all(['div', 'section', 'p', 'li']):
+            # Method 1: Look for compensation/salary sections (enhanced for Ashby)
+            for section in soup.find_all(['div', 'section', 'p', 'li', 'span']):
                 section_text = section.get_text()
-                if any(keyword in section_text.lower() for keyword in ['compensation', 'salary', 'pay range', 'wage', 'remuneration']):
+                # Look for salary patterns even without keywords (common in Notion)
+                if '$' in section_text and ('per year' in section_text.lower() or 'annually' in section_text.lower() or '-' in section_text or '–' in section_text):
                     salary = self.extract_salary(section_text)
                     if salary:
+                        logger.info(f"Found salary in section: {section_text[:100]}...")
+                        break
+                # Also check for compensation keywords
+                if any(keyword in section_text.lower() for keyword in ['compensation', 'salary', 'pay range', 'wage', 'remuneration', 'total comp', 'base salary']):
+                    salary = self.extract_salary(section_text)
+                    if salary:
+                        logger.info(f"Found salary near keyword: {section_text[:100]}...")
                         break
 
             # Method 2: Look near specific headers
             if not salary:
-                for header in soup.find_all(['h2', 'h3', 'h4', 'strong']):
-                    if any(keyword in header.get_text().lower() for keyword in ['compensation', 'salary', 'pay']):
+                for header in soup.find_all(['h2', 'h3', 'h4', 'h5', 'strong', 'b']):
+                    header_text = header.get_text().lower()
+                    if any(keyword in header_text for keyword in ['compensation', 'salary', 'pay', 'what you\'ll earn', 'total comp']):
                         # Get the next sibling or parent's text
                         next_elem = header.find_next_sibling()
                         if next_elem:
                             salary = self.extract_salary(next_elem.get_text())
+                        if not salary:
+                            # Try the next few siblings
+                            for i in range(3):
+                                next_elem = next_elem.find_next_sibling() if next_elem else None
+                                if next_elem:
+                                    salary = self.extract_salary(next_elem.get_text())
+                                    if salary:
+                                        break
                         if not salary and header.parent:
                             salary = self.extract_salary(header.parent.get_text())
                         if salary:
+                            logger.info(f"Found salary near header '{header.get_text()}'")
                             break
 
             # Method 3: Look in job details section (often in dl/dt/dd format)
@@ -1286,16 +1373,44 @@ class TalentScraper:
                     if '$' in dl_text or any(word in dl_text.lower() for word in ['salary', 'compensation', 'pay']):
                         salary = self.extract_salary(dl_text)
                         if salary:
+                            logger.info(f"Found salary in dl element")
                             break
 
-            # Method 4: Try full page text as last resort
+            # Method 4: Look for salary in bullet points or list items (common in Ashby/Notion)
+            if not salary:
+                for li in soup.find_all('li'):
+                    li_text = li.get_text()
+                    if '$' in li_text and len(li_text) < 200:  # Salary info is usually concise
+                        salary = self.extract_salary(li_text)
+                        if salary:
+                            logger.info(f"Found salary in list item: {li_text[:100]}...")
+                            break
+
+            # Method 5: Try searching in specific Ashby class patterns
+            if not salary and 'ashbyhq.com' in job_url:
+                # Ashby often uses specific classes for job details
+                for class_pattern in ['job-posting', 'posting-content', 'job-description', 'rich-text']:
+                    elements = soup.find_all(class_=re.compile(class_pattern, re.I))
+                    for elem in elements:
+                        elem_text = elem.get_text()
+                        if '$' in elem_text:
+                            salary = self.extract_salary(elem_text)
+                            if salary:
+                                logger.info(f"Found salary in Ashby element with class '{class_pattern}'")
+                                break
+                    if salary:
+                        break
+
+            # Method 6: Try full page text as last resort
             if not salary:
                 salary = self.extract_salary(full_text)
+                if salary:
+                    logger.info(f"Found salary in full page text")
 
             details['salary'] = salary
 
             # Get job description (limit to first 2000 chars for performance)
-            desc_element = soup.find(class_=re.compile('description|content|body|posting-description'))
+            desc_element = soup.find(class_=re.compile('description|content|body|posting-description|rich-text'))
             if desc_element:
                 details['description'] = desc_element.get_text(strip=True)[:2000]
             else:
