@@ -805,14 +805,100 @@ class TalentScraper:
                 logger.info(f"Redirecting to Rippling ATS: {company_url}")
 
             logger.info(f"Scraping Rippling site: {company_url}")
-            await page.goto(company_url, wait_until='networkidle', timeout=30000)
+            await page.goto(company_url, wait_until='domcontentloaded', timeout=30000)
 
-            # Wait for dynamic content to load
-            await page.wait_for_timeout(5000)
+            # Wait for page to load
+            await page.wait_for_timeout(3000)
 
-            # Scroll to load all jobs
-            await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
-            await page.wait_for_timeout(2000)
+            # Rippling uses Next.js - extract data from __NEXT_DATA__
+            content = await page.content()
+            soup = BeautifulSoup(content, 'html.parser')
+
+            # Find the __NEXT_DATA__ script tag
+            next_data_script = soup.find('script', id='__NEXT_DATA__')
+
+            if next_data_script and next_data_script.string:
+                try:
+                    import json
+                    next_data = json.loads(next_data_script.string)
+
+                    # Navigate to the jobs data
+                    if 'props' in next_data and 'pageProps' in next_data['props']:
+                        page_props = next_data['props']['pageProps']
+
+                        # Get jobs from the data
+                        if 'jobs' in page_props and 'items' in page_props['jobs']:
+                            job_items = page_props['jobs']['items']
+                            total_jobs = page_props['jobs'].get('totalItems', len(job_items))
+                            logger.info(f"Found {total_jobs} total jobs at Rippling (showing {len(job_items)})")
+
+                            # Parse each job
+                            detail_fetch_count = 0
+                            for job_data in job_items:
+                                try:
+                                    # Extract job information
+                                    job = {
+                                        'title': job_data.get('name', 'Unknown'),
+                                        'url': job_data.get('url', ''),
+                                        'department': job_data.get('department', {}).get('name', 'Not specified'),
+                                        'location': 'Not specified',
+                                        'salary': None,
+                                        'salary_min': None,
+                                        'salary_max': None,
+                                        'raw_text': job_data.get('name', ''),
+                                        'scraped_at': datetime.now().isoformat()
+                                    }
+
+                                    # Extract location
+                                    if 'locations' in job_data and job_data['locations']:
+                                        location_data = job_data['locations'][0]  # Take first location
+                                        location_parts = []
+                                        if location_data.get('city'):
+                                            location_parts.append(location_data['city'])
+                                        if location_data.get('state'):
+                                            location_parts.append(location_data['state'])
+                                        if location_data.get('country'):
+                                            location_parts.append(location_data['country'])
+
+                                        if location_parts:
+                                            job['location'] = ', '.join(location_parts)
+
+                                        # Check for remote
+                                        if location_data.get('workplaceType') == 'REMOTE':
+                                            job['location'] = 'Remote'
+                                        elif location_data.get('workplaceType') == 'HYBRID':
+                                            job['location'] = f"Hybrid - {job['location']}" if job['location'] != 'Not specified' else 'Hybrid'
+
+                                    # Try to get salary from job detail page if enabled
+                                    if fetch_details and job['url'] and detail_fetch_count < max_detail_fetches:
+                                        try:
+                                            logger.info(f"Fetching details for job: {job['title'][:30]}...")
+                                            details = await self.scrape_rippling_job_details(job['url'])
+                                            if details.get('salary'):
+                                                job['salary'] = details['salary']
+                                                job['salary_min'] = details['salary']['min']
+                                                job['salary_max'] = details['salary']['max']
+                                                logger.info(f"Found salary: ${details['salary']['min']:,} - ${details['salary']['max']:,}")
+                                            detail_fetch_count += 1
+                                        except Exception as e:
+                                            logger.debug(f"Could not fetch job details: {e}")
+
+                                    jobs.append(job)
+
+                                except Exception as e:
+                                    logger.error(f"Error parsing Rippling job: {e}")
+                                    continue
+
+                            logger.info(f"Successfully parsed {len(jobs)} jobs from Rippling")
+                            return jobs
+
+                except json.JSONDecodeError as e:
+                    logger.error(f"Failed to parse Rippling __NEXT_DATA__: {e}")
+                except Exception as e:
+                    logger.error(f"Error extracting Rippling jobs from Next.js data: {e}")
+
+            # Fallback to traditional scraping if __NEXT_DATA__ not found
+            logger.warning("__NEXT_DATA__ not found, falling back to traditional scraping")
 
             # Rippling-specific selectors for their ATS
             job_selectors = [
