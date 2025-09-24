@@ -35,6 +35,8 @@ class TalentScraper:
             return 'stripe'
         elif 'databricks.com' in url:
             return 'databricks'
+        elif 'lifeatcanva.com' in url or 'canva.com' in url:
+            return 'canva'
         elif 'lever.co' in url:
             return 'lever'
         elif 'workable.com' in url:
@@ -162,6 +164,8 @@ class TalentScraper:
             return await self.scrape_stripe_jobs(company_url, fetch_details, max_detail_fetches)
         elif provider == 'databricks':
             return await self.scrape_databricks_jobs(company_url, fetch_details, max_detail_fetches)
+        elif provider == 'canva':
+            return await self.scrape_canva_jobs(company_url, fetch_details, max_detail_fetches)
         else:
             # Default to Greenhouse strategy for greenhouse and unknown providers
             return await self.scrape_greenhouse_jobs(company_url, fetch_details, max_detail_fetches)
@@ -487,6 +491,302 @@ class TalentScraper:
             }
         except Exception as e:
             logger.error(f"Error parsing Ashby job link: {e}")
+            return None
+
+    async def scrape_canva_jobs(self, company_url: str, fetch_details: bool = True, max_detail_fetches: int = 20) -> List[Dict]:
+        """Scrape jobs from Canva's custom job board at lifeatcanva.com"""
+        page = await self.context.new_page()
+        jobs = []
+
+        try:
+            logger.info(f"Scraping Canva site: {company_url}")
+            await page.goto(company_url, wait_until='domcontentloaded', timeout=30000)
+
+            # Wait for dynamic content to load
+            await page.wait_for_timeout(5000)
+
+            # Scroll to load all jobs
+            await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+            await page.wait_for_timeout(2000)
+
+            # Canva-specific selectors
+            job_selectors = [
+                'a[href*="/jobs/"]',  # Job links
+                '.job-card',
+                '.job-listing',
+                '.opportunity',
+                '.position',
+                'div[class*="JobCard"]',
+                'div[class*="jobCard"]',
+                'article[class*="job"]',
+                '[data-testid="job-card"]',
+                '[role="listitem"] a',
+                '.careers-opportunity',
+                'div[class*="opportunity"]',
+                'a[class*="opportunity"]',
+                'h3 > a',  # Job titles in headers
+                'h4 > a',
+                '.role-card',
+                'div[class*="role"]'
+            ]
+
+            job_elements = None
+            for selector in job_selectors:
+                job_elements = await page.query_selector_all(selector)
+                if job_elements and len(job_elements) > 0:
+                    # Filter out non-job elements
+                    valid_elements = []
+                    for elem in job_elements:
+                        text = await elem.text_content()
+                        if text and len(text.strip()) > 5 and not any(skip in text.lower() for skip in ['cookie', 'privacy', 'terms', 'careers at', 'benefits', 'perks', 'about']):
+                            valid_elements.append(elem)
+
+                    if valid_elements:
+                        job_elements = valid_elements
+                        logger.info(f"Found {len(job_elements)} jobs using Canva selector: {selector}")
+                        break
+
+            if not job_elements:
+                # Try to find job links by pattern in HTML
+                content = await page.content()
+                soup = BeautifulSoup(content, 'html.parser')
+
+                job_links = []
+                all_links = soup.find_all('a', href=True)
+                for link in all_links:
+                    href = link['href']
+                    text = link.get_text(strip=True)
+                    # Check if it's likely a job link
+                    if text and len(text) > 5 and (
+                        '/jobs/' in href or
+                        'job-' in href or
+                        'position-' in href or
+                        'role-' in href
+                    ) and not any(skip in text.lower() for skip in ['cookie', 'privacy', 'terms', 'careers', 'benefits']):
+                        job_links.append(link)
+
+                if job_links:
+                    logger.info(f"Found {len(job_links)} job links via href pattern")
+                    for link in job_links:
+                        job = await self.parse_canva_job_link(link, page)
+                        if job:
+                            jobs.append(job)
+                    return jobs
+
+            # Parse job elements
+            detail_fetch_count = 0
+            for i, element in enumerate(job_elements):
+                try:
+                    job = await self.parse_canva_job_element(element, page)
+                    if job:
+                        # Try to get salary from job detail page if not found
+                        if fetch_details and job.get('url') and not job.get('salary') and detail_fetch_count < max_detail_fetches:
+                            try:
+                                logger.info(f"Fetching details for Canva job {i+1}/{len(job_elements)}: {job['title'][:30]}...")
+                                details = await self.scrape_job_details(job['url'])
+                                if details.get('salary'):
+                                    job['salary'] = details['salary']
+                                    logger.info(f"Found salary: ${details['salary']['min']:,} - ${details['salary']['max']:,}")
+                                detail_fetch_count += 1
+                            except Exception as e:
+                                logger.debug(f"Could not fetch job details: {e}")
+                        jobs.append(job)
+                except Exception as e:
+                    logger.error(f"Error parsing Canva job element: {e}")
+                    continue
+
+            logger.info(f"Scraped {len(jobs)} jobs from Canva site: {company_url}")
+
+        except Exception as e:
+            logger.error(f"Error scraping Canva site {company_url}: {e}")
+        finally:
+            await page.close()
+
+        return jobs
+
+    async def parse_canva_job_element(self, element, page) -> Optional[Dict]:
+        """Parse a single Canva job element"""
+        try:
+            # Get full text and HTML
+            full_text = await element.text_content()
+            if not full_text:
+                return None
+
+            html = await element.inner_html()
+            soup = BeautifulSoup(html, 'html.parser')
+
+            # Get job title
+            title = None
+            title_elem = soup.find(['h3', 'h4', 'h2', 'strong'])
+            if title_elem:
+                title = title_elem.get_text(strip=True)
+            else:
+                # Try to find the first link text
+                link = soup.find('a')
+                if link:
+                    title = link.get_text(strip=True)
+
+            if not title:
+                # Get first non-empty line
+                lines = [line.strip() for line in full_text.strip().split('\n') if line.strip()]
+                if lines:
+                    title = lines[0]
+
+            if not title:
+                return None
+
+            # Clean the job title (remove location if in parentheses)
+            location = "Not specified"
+            if '(' in title and ')' in title:
+                # Extract location from parentheses
+                match = re.search(r'\(([^)]+)\)', title)
+                if match:
+                    location = match.group(1).strip()
+                    title = title.replace(match.group(0), '').strip()
+
+            # Get job URL
+            url = None
+            element_href = await element.get_attribute('href')
+            if element_href:
+                url = element_href
+                if url and not url.startswith('http'):
+                    # Construct full URL
+                    base_url = 'https://www.lifeatcanva.com'
+                    url = f"{base_url}{url}" if url.startswith('/') else f"{base_url}/{url}"
+            else:
+                # Look for a link within the element
+                link = soup.find('a', href=True)
+                if link:
+                    url = link['href']
+                    if not url.startswith('http'):
+                        base_url = 'https://www.lifeatcanva.com'
+                        url = f"{base_url}{url}" if url.startswith('/') else f"{base_url}/{url}"
+
+            # Try to extract department from the text
+            department = "Not specified"
+            text_lower = full_text.lower()
+
+            # Common department patterns
+            if 'engineering' in text_lower or 'developer' in text_lower or 'software' in text_lower:
+                department = "Engineering"
+            elif 'design' in text_lower or 'ux' in text_lower or 'ui' in text_lower:
+                department = "Design"
+            elif 'product' in text_lower and 'manager' in text_lower:
+                department = "Product"
+            elif 'sales' in text_lower or 'account' in text_lower:
+                department = "Sales"
+            elif 'marketing' in text_lower or 'growth' in text_lower:
+                department = "Marketing"
+            elif 'data' in text_lower or 'analytics' in text_lower:
+                department = "Data"
+            elif 'people' in text_lower or 'hr' in text_lower or 'recruiting' in text_lower:
+                department = "People"
+            elif 'finance' in text_lower or 'accounting' in text_lower:
+                department = "Finance"
+            elif 'legal' in text_lower or 'compliance' in text_lower:
+                department = "Legal"
+            elif 'operations' in text_lower or 'ops' in text_lower:
+                department = "Operations"
+
+            # Try to extract location from the full text if not found
+            if location == "Not specified":
+                # Look for common location patterns
+                location_patterns = [
+                    r'Location:\s*([^,\n]+)',
+                    r'Based in:\s*([^,\n]+)',
+                    r'Office:\s*([^,\n]+)',
+                    r'City:\s*([^,\n]+)'
+                ]
+
+                for pattern in location_patterns:
+                    match = re.search(pattern, full_text, re.IGNORECASE)
+                    if match:
+                        location = match.group(1).strip()
+                        break
+
+                # Check for common cities in the text
+                cities = ['Sydney', 'Melbourne', 'Austin', 'San Francisco', 'London', 'Remote', 'New York', 'Beijing', 'Manila']
+                for city in cities:
+                    if city in full_text:
+                        location = city
+                        break
+
+            # Try to extract salary
+            salary = self.extract_salary(full_text)
+
+            return {
+                'title': title,
+                'url': url,
+                'location': location,
+                'department': department,
+                'salary': salary,
+                'salary_min': salary['min'] if salary else None,
+                'salary_max': salary['max'] if salary else None,
+                'raw_text': full_text[:500],
+                'scraped_at': datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error parsing Canva job element: {e}")
+            return None
+
+    async def parse_canva_job_link(self, link, page) -> Optional[Dict]:
+        """Parse a job from a link element found in Canva's HTML"""
+        try:
+            title = link.get_text(strip=True)
+            url = link.get('href')
+
+            if not url.startswith('http'):
+                base_url = 'https://www.lifeatcanva.com'
+                url = f"{base_url}{url}" if url.startswith('/') else f"{base_url}/{url}"
+
+            # Extract location if in parentheses in title
+            location = "Not specified"
+            if '(' in title and ')' in title:
+                match = re.search(r'\(([^)]+)\)', title)
+                if match:
+                    location = match.group(1).strip()
+                    title = title.replace(match.group(0), '').strip()
+
+            # Try to infer department from title
+            department = "Not specified"
+            title_lower = title.lower()
+
+            if 'engineering' in title_lower or 'developer' in title_lower or 'software' in title_lower:
+                department = "Engineering"
+            elif 'design' in title_lower or 'ux' in title_lower or 'ui' in title_lower:
+                department = "Design"
+            elif 'product' in title_lower and 'manager' in title_lower:
+                department = "Product"
+            elif 'sales' in title_lower or 'account' in title_lower:
+                department = "Sales"
+            elif 'marketing' in title_lower or 'growth' in title_lower:
+                department = "Marketing"
+            elif 'data' in title_lower or 'analytics' in title_lower:
+                department = "Data"
+
+            # Get parent element text for additional context
+            parent_text = ""
+            parent = link.find_parent(['div', 'article', 'li'])
+            if parent:
+                parent_text = parent.get_text(strip=True)
+                # Try to extract salary from parent text
+                salary = self.extract_salary(parent_text)
+            else:
+                salary = None
+
+            return {
+                'title': title,
+                'url': url,
+                'location': location,
+                'department': department,
+                'salary': salary,
+                'salary_min': salary['min'] if salary else None,
+                'salary_max': salary['max'] if salary else None,
+                'raw_text': parent_text[:500] if parent_text else title,
+                'scraped_at': datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error parsing Canva job link: {e}")
             return None
 
     async def scrape_stripe_jobs(self, company_url: str, fetch_details: bool = True, max_detail_fetches: int = 20) -> List[Dict]:

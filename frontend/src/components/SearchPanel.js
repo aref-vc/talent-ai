@@ -10,9 +10,9 @@ const EXAMPLE_COMPANIES = [
   { name: 'Figma', url: 'https://job-boards.greenhouse.io/figma' },
   { name: 'Databricks', url: 'https://www.databricks.com/company/careers/open-positions' },
   { name: 'Notion', url: 'https://jobs.ashbyhq.com/notion' },
-  { name: 'Canva', url: 'https://job-boards.greenhouse.io/canva' },
+  { name: 'Canva', url: 'https://www.lifeatcanva.com/en/jobs/' },
   { name: 'Scale AI', url: 'https://job-boards.greenhouse.io/scaleai' },
-  { name: 'Ramp', url: 'https://job-boards.greenhouse.io/ramp' },
+  { name: 'Ramp', url: 'https://jobs.ashbyhq.com/ramp' },
   { name: 'Rippling', url: 'https://job-boards.greenhouse.io/rippling' },
 ];
 
