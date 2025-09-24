@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './App.css';
+import LandingPage from './components/LandingPage';
 import SearchPanel from './components/SearchPanel';
 import JobsTable from './components/JobsTable';
 import Analytics from './components/Analytics';
@@ -13,7 +14,7 @@ function App() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [companyName, setCompanyName] = useState('');
-  const [activeTab, setActiveTab] = useState('search');
+  const [activeTab, setActiveTab] = useState('landing');
   const [recentCompanies, setRecentCompanies] = useState([]);
 
   useEffect(() => {
@@ -90,35 +91,54 @@ function App() {
     }
   };
 
+  const handleStartAnalyzing = () => {
+    setActiveTab('search');
+  };
+
   return (
     <div className="App">
-      <header className="App-header">
-        <h1>🎯 Talent AI</h1>
-        <p>Universal Job Scraping & Talent Intelligence Platform</p>
-      </header>
+      {activeTab !== 'landing' && (
+        <>
+          <header className="App-header">
+            <div className="header-content">
+              <button
+                className="home-btn"
+                onClick={() => setActiveTab('landing')}
+                title="Back to Home"
+              >
+                ←
+              </button>
+              <div className="header-text">
+                <h1>🎯 Talent AI</h1>
+                <p>Universal Job Scraping & Talent Intelligence Platform</p>
+              </div>
+            </div>
+          </header>
 
-      <nav className="tabs">
-        <button
-          className={activeTab === 'search' ? 'tab active' : 'tab'}
-          onClick={() => setActiveTab('search')}
-        >
-          Search
-        </button>
-        <button
-          className={activeTab === 'results' ? 'tab active' : 'tab'}
-          onClick={() => setActiveTab('results')}
-          disabled={jobs.length === 0}
-        >
-          Results ({jobs.length})
-        </button>
-        <button
-          className={activeTab === 'analytics' ? 'tab active' : 'tab'}
-          onClick={() => setActiveTab('analytics')}
-          disabled={!analytics}
-        >
-          Analytics
-        </button>
-      </nav>
+          <nav className="tabs">
+            <button
+              className={activeTab === 'search' ? 'tab active' : 'tab'}
+              onClick={() => setActiveTab('search')}
+            >
+              Search
+            </button>
+            <button
+              className={activeTab === 'results' ? 'tab active' : 'tab'}
+              onClick={() => setActiveTab('results')}
+              disabled={jobs.length === 0}
+            >
+              Results ({jobs.length})
+            </button>
+            <button
+              className={activeTab === 'analytics' ? 'tab active' : 'tab'}
+              onClick={() => setActiveTab('analytics')}
+              disabled={!analytics}
+            >
+              Analytics
+            </button>
+          </nav>
+        </>
+      )}
 
       <main className="App-main">
         {error && (
@@ -132,6 +152,10 @@ function App() {
             <div className="spinner"></div>
             <p>Scraping job data... This may take a minute...</p>
           </div>
+        )}
+
+        {activeTab === 'landing' && (
+          <LandingPage onStartAnalyzing={handleStartAnalyzing} />
         )}
 
         {activeTab === 'search' && (
