@@ -87,21 +87,104 @@
   gap: 2rem;
 }
 
-.chart-container {
+.chart-card {
   background: var(--bg-card);
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 2rem;
   min-height: 400px;
   position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.chart-container:first-child {
-  grid-column: span 2;
-}
-
-.chart-container canvas {
+.chart-card canvas {
   max-height: 350px;
+  width: 100% !important;
+}
+
+/* Top Jobs Table Section */
+.top-jobs-section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 2rem;
+  margin-top: 2rem;
+}
+
+.top-jobs-section h3 {
+  color: var(--primary);
+  font-size: 1.25rem;
+  font-weight: 600;
+  margin-bottom: 1.5rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.top-jobs-table {
+  overflow-x: auto;
+}
+
+.top-jobs-table table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.top-jobs-table th {
+  background: var(--bg-secondary);
+  color: var(--text-secondary);
+  font-weight: 600;
+  text-align: left;
+  padding: 1rem;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  border-bottom: 2px solid var(--border);
+}
+
+.top-jobs-table td {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.top-jobs-table tbody tr:hover {
+  background: rgba(238, 115, 53, 0.05);
+}
+
+.top-jobs-table .job-title-cell a {
+  color: var(--primary);
+  text-decoration: none;
+  font-weight: 500;
+  transition: all 0.3s ease;
+}
+
+.top-jobs-table .job-title-cell a:hover {
+  color: var(--primary-hover);
+  text-decoration: underline;
+}
+
+.top-jobs-table .salary-cell {
+  font-weight: 600;
+  color: var(--primary);
+  white-space: nowrap;
+}
+
+.top-jobs-table tbody tr:nth-child(1) td:first-child {
+  color: #FFD700;
+  font-weight: 700;
+}
+
+.top-jobs-table tbody tr:nth-child(2) td:first-child {
+  color: #C0C0C0;
+  font-weight: 700;
+}
+
+.top-jobs-table tbody tr:nth-child(3) td:first-child {
+  color: #CD7F32;
+  font-weight: 700;
 }
 
 @media (max-width: 1024px) {

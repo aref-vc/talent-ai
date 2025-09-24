@@ -236,8 +236,17 @@ def calculate_analytics(jobs: List[Dict]) -> Dict:
             'ranges': []
         },
         'disclosure_rate': 0.0,
-        'avg_salary': None
+        'avg_salary': None,
+        # New analytics
+        'salary_distribution': {},
+        'avg_salary_by_dept': {},
+        'work_arrangement': {'Remote': 0, 'Hybrid': 0, 'Onsite': 0},
+        'top_paying_jobs': [],
+        'seniority_levels': {'Entry': 0, 'Mid': 0, 'Senior': 0, 'Lead': 0, 'Principal/Staff': 0}
     }
+
+    # Collect all jobs with salaries for top paying analysis
+    jobs_with_salaries = []
 
     # Count departments and locations
     for job in jobs:
@@ -247,12 +256,98 @@ def calculate_analytics(jobs: List[Dict]) -> Dict:
         loc = job.get('location', 'Unknown')
         analytics['locations'][loc] = analytics['locations'].get(loc, 0) + 1
 
+        # Work arrangement analysis (Remote/Hybrid/Onsite)
+        loc_lower = loc.lower()
+        if 'remote' in loc_lower:
+            analytics['work_arrangement']['Remote'] += 1
+        elif 'hybrid' in loc_lower:
+            analytics['work_arrangement']['Hybrid'] += 1
+        else:
+            analytics['work_arrangement']['Onsite'] += 1
+
+        # Seniority level analysis
+        title = job.get('title', '').lower()
+        if any(word in title for word in ['junior', 'entry', 'associate', 'intern', 'graduate']):
+            analytics['seniority_levels']['Entry'] += 1
+        elif any(word in title for word in ['senior', 'sr.', 'sr ']):
+            analytics['seniority_levels']['Senior'] += 1
+        elif any(word in title for word in ['lead', 'manager', 'head', 'director']):
+            analytics['seniority_levels']['Lead'] += 1
+        elif any(word in title for word in ['principal', 'staff', 'architect', 'expert']):
+            analytics['seniority_levels']['Principal/Staff'] += 1
+        else:
+            analytics['seniority_levels']['Mid'] += 1
+
         # Salary analysis
         if job.get('salary'):
             analytics['salary_ranges']['with_salary'] += 1
             analytics['salary_ranges']['ranges'].append(job['salary'])
+
+            # Collect for top paying jobs
+            if job.get('salary', {}).get('max'):
+                jobs_with_salaries.append(job)
+
+            # Calculate average for department
+            if dept not in analytics['avg_salary_by_dept']:
+                analytics['avg_salary_by_dept'][dept] = {'total': 0, 'count': 0, 'avg': 0}
+
+            salary_min = job['salary'].get('min', 0)
+            salary_max = job['salary'].get('max', 0)
+            avg = (salary_min + salary_max) / 2 if (salary_min and salary_max) else salary_max or salary_min
+
+            if avg:
+                analytics['avg_salary_by_dept'][dept]['total'] += avg
+                analytics['avg_salary_by_dept'][dept]['count'] += 1
+
+            # Salary distribution (bands)
+            max_salary = job['salary'].get('max', 0)
+            if max_salary:
+                if max_salary < 50000:
+                    band = '$0-50k'
+                elif max_salary < 100000:
+                    band = '$50k-100k'
+                elif max_salary < 150000:
+                    band = '$100k-150k'
+                elif max_salary < 200000:
+                    band = '$150k-200k'
+                elif max_salary < 250000:
+                    band = '$200k-250k'
+                else:
+                    band = '$250k+'
+
+                analytics['salary_distribution'][band] = analytics['salary_distribution'].get(band, 0) + 1
         else:
             analytics['salary_ranges']['without_salary'] += 1
+
+    # Calculate average salaries per department
+    for dept in analytics['avg_salary_by_dept']:
+        if analytics['avg_salary_by_dept'][dept]['count'] > 0:
+            analytics['avg_salary_by_dept'][dept]['avg'] = int(
+                analytics['avg_salary_by_dept'][dept]['total'] /
+                analytics['avg_salary_by_dept'][dept]['count']
+            )
+
+    # Get top 10 highest paying jobs
+    jobs_with_salaries.sort(key=lambda x: x.get('salary', {}).get('max', 0), reverse=True)
+    analytics['top_paying_jobs'] = [
+        {
+            'title': job.get('title', 'Unknown'),
+            'department': job.get('department', 'Unknown'),
+            'location': job.get('location', 'Unknown'),
+            'salary_min': job.get('salary', {}).get('min'),
+            'salary_max': job.get('salary', {}).get('max'),
+            'url': job.get('url', '')
+        }
+        for job in jobs_with_salaries[:10]
+    ]
+
+    # Ensure salary distribution bands are ordered
+    band_order = ['$0-50k', '$50k-100k', '$100k-150k', '$150k-200k', '$200k-250k', '$250k+']
+    ordered_distribution = {}
+    for band in band_order:
+        if band in analytics['salary_distribution']:
+            ordered_distribution[band] = analytics['salary_distribution'][band]
+    analytics['salary_distribution'] = ordered_distribution
 
     # Calculate disclosure rate
     if jobs:
