@@ -799,8 +799,13 @@ class TalentScraper:
         jobs = []
 
         try:
+            # Rippling uses a complex React app, try direct ATS URL instead
+            if 'rippling.com/careers' in company_url:
+                company_url = 'https://ats.rippling.com/rippling/jobs'
+                logger.info(f"Redirecting to Rippling ATS: {company_url}")
+
             logger.info(f"Scraping Rippling site: {company_url}")
-            await page.goto(company_url, wait_until='domcontentloaded', timeout=30000)
+            await page.goto(company_url, wait_until='networkidle', timeout=30000)
 
             # Wait for dynamic content to load
             await page.wait_for_timeout(5000)
