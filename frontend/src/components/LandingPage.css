@@ -435,8 +435,11 @@ section {
 /* Companies Grid */
 .companies-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
   gap: 1.5rem;
+  max-width: 900px;
+  margin: 0 auto;
 }
 
 .company-card {
@@ -457,20 +460,22 @@ section {
 }
 
 .company-logo {
-  width: 60px;
-  height: 60px;
+  width: 64px;
+  height: 64px;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: var(--background);
+  background: white;
   border-radius: 12px;
   border: 1px solid var(--border);
   overflow: hidden;
+  flex-shrink: 0;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 
 .company-logo img {
-  width: 40px;
-  height: 40px;
+  width: 48px;
+  height: 48px;
   object-fit: contain;
 }
 
@@ -636,6 +641,11 @@ section {
   .hero-stats {
     justify-content: center;
   }
+
+  .companies-grid {
+    grid-template-columns: repeat(2, 1fr);
+    grid-template-rows: repeat(3, 1fr);
+  }
 }
 
 @media (max-width: 768px) {
@@ -666,11 +676,13 @@ section {
     grid-template-columns: 1fr;
   }
 
-  .analytics-grid {
+  .companies-grid {
     grid-template-columns: 1fr;
+    grid-template-rows: repeat(6, 1fr);
+    max-width: 400px;
   }
 
-  .companies-grid {
+  .analytics-grid {
     grid-template-columns: 1fr;
   }
 
