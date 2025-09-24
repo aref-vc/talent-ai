@@ -1,12 +1,97 @@
-# Python
+# ===========================================
+# Talent AI v2.0 - Comprehensive .gitignore
+# ===========================================
+
+# ============================================
+# SECURITY & PERSONAL DATA
+# ============================================
+# API Keys and credentials
+.env
+.env.local
+.env.development
+.env.production
+.env.test
+*.env
+**/secrets/**
+**/credentials/**
+**/.credentials/**
+api_keys.json
+config/secrets.json
+
+# Personal files and data
+personal/
+private/
+**/personal/**
+**/private/**
+user_data/
+*.personal
+*.private
+
+# Local configuration
+config/local.json
+settings.local.json
+local_settings.py
+
+# SSH keys
+*.pem
+*.key
+id_rsa*
+*.ssh
+
+# Certificate files
+*.p12
+*.pfx
+*.crt
+*.cer
+*.der
+
+# ===========================================
+# SCRAPED DATA & CACHE
+# ===========================================
+# Scraped company data (contains potentially sensitive info)
+data/
+*.json
+!package.json
+!package-lock.json
+!tsconfig.json
+scraped_data/
+company_data/
+job_data/
+exports/
+downloads/
+*.csv
+
+# Cache directories
+cache/
+.cache/
+tmp/
+temp/
+**/tmp/**
+**/temp/**
+
+# Log files with potentially sensitive data
+*.log
+logs/
+**/logs/**
+
+# ===========================================
+# PYTHON / BACKEND
+# ===========================================
+# Virtual environments
+venv/
+env/
+.env/
+.venv/
+ENV/
+env.bak/
+venv.bak/
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+
+# Distribution / packaging
 .Python
-env/
-venv/
-ENV/
 build/
 develop-eggs/
 dist/
@@ -23,39 +108,200 @@ wheels/
 .installed.cfg
 *.egg
 
-# Node
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage reports
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# ===========================================
+# NODE.JS / FRONTEND
+# ===========================================
+# Dependencies
 node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+lerna-debug.log*
 
-# React build
-frontend/build/
+# Optional npm cache directory
+.npm
 
-# IDE
-.vscode/
-.idea/
-*.swp
-*.swo
-*~
-.DS_Store
+# Optional eslint cache
+.eslintcache
 
-# Environment variables
-.env
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variables file
 .env.local
 .env.development.local
 .env.test.local
 .env.production.local
 
-# Data
-data/
-*.csv
-*.json
+# Storybook build outputs
+.out
+.storybook-out
 
-# Logs
-*.log
-logs/
+# ===========================================
+# REACT / FRONTEND BUILD
+# ===========================================
+# Production builds
+build/
+dist/
+out/
+frontend/build/
 
+# Static files
+static/tmp/
+
+# ===========================================
+# BROWSER & PLAYWRIGHT
+# ===========================================
 # Playwright
-playwright-report/
 test-results/
+playwright-report/
+playwright/.cache/
+.playwright/
+
+# Browser downloads
+**/Downloads/**
+**/downloads/**
+
+# Screenshots (may contain sensitive data)
+screenshots/
+**/screenshots/**
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+!public/*.png
+!public/*.jpg
+!public/*.jpeg
+!public/*.gif
+!public/*.webp
+!src/assets/*.png
+!src/assets/*.jpg
+!src/assets/*.jpeg
+!src/assets/*.gif
+!src/assets/*.webp
+
+# ===========================================
+# DATABASE & STORAGE
+# ===========================================
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+database.json
+db.json
+
+# ===========================================
+# DEVELOPMENT TOOLS
+# ===========================================
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Backup files
+*.bak
+*.backup
+*.orig
+
+# ===========================================
+# MONITORING & ANALYTICS
+# ===========================================
+# Performance monitoring
+.nyc_output/
+coverage/
+
+# Error tracking
+.sentry/
+
+# ===========================================
+# DEPLOYMENT & CI/CD
+# ===========================================
+# Docker
+.dockerignore
+
+# Deployment configs (may contain sensitive info)
+docker-compose.override.yml
+k8s-secrets.yml
+deployment-secrets.yml
+
+# ===========================================
+# CUSTOM PROJECT FILES
+# ===========================================
+# Local development scripts
+local_*.sh
+local_*.py
+local_*.js
+
+# Test files with real data
+test_companies.json
+sample_jobs.json
+
+# Debug outputs
+debug/
+debug_*.json
+debug_*.log
+
+# ===========================================
+# KEEP THESE FILES (OVERRIDE)
+# ===========================================
+# Important project files that should be included
+!.gitignore
+!README.md
+!package.json
+!package-lock.json
+!requirements.txt
+!start.sh
+!CLAUDE.md
+!LICENSE
+!.github/
+!public/index.html
+!public/manifest.json
+!src/
+
+# ===========================================
+# NOTES
+# ===========================================
+# This .gitignore protects against:
+# - API keys and credentials
+# - Personal/private data
+# - Scraped company information
+# - User-specific configurations
+# - Development artifacts
+# - Cache and temporary files
+# - Sensitive screenshots/media
+# - Database files with real data
+# - OS and IDE specific files
