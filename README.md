@@ -241,7 +241,7 @@ Talent AI v2.0/
 ### Development Setup
 ```bash
 # Clone and setup
-git clone https://github.com/yourusername/talent-ai
+git clone https://github.com/aref-vc/talent-ai
 cd talent-ai
 ./start.sh
 
