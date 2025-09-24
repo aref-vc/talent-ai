@@ -69,6 +69,12 @@ class CompanyAnalytics(BaseModel):
     salary_ranges: Dict
     disclosure_rate: float
     avg_salary: Optional[Dict]
+    # New analytics fields
+    salary_distribution: Optional[Dict[str, int]] = {}
+    avg_salary_by_dept: Optional[Dict[str, Dict]] = {}
+    work_arrangement: Optional[Dict[str, int]] = {}
+    top_paying_jobs: Optional[List[Dict]] = []
+    seniority_levels: Optional[Dict[str, int]] = {}
 
 
 # In-memory storage for demo (use database in production)

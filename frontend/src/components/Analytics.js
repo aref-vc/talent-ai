@@ -255,7 +255,7 @@ function Analytics({ data, companyName }) {
         .slice(0, 10);
 
       chartsRef.current.avgSalaryByDept = new Chart(ctx, {
-        type: 'horizontalBar',
+        type: 'bar',
         data: {
           labels: deptData.map(([name]) => name),
           datasets: [{
