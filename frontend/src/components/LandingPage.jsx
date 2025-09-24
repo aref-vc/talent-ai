@@ -7,42 +7,42 @@ const LandingPage = ({ onStartAnalyzing }) => {
   const features = [
     {
       id: 1,
-      icon: '📊',
+      icon: 'analytics',
       title: 'Universal Analytics',
       description: '7 comprehensive charts analyzing salary, location, and department distribution across any company',
       metric: '100+ companies supported'
     },
     {
       id: 2,
-      icon: '💰',
+      icon: 'attach_money',
       title: 'Salary Intelligence',
       description: 'Real-time salary transparency with range detection and competitive benchmarking',
       metric: '$50K-$500K+ range detection'
     },
     {
       id: 3,
-      icon: '📍',
+      icon: 'location_on',
       title: 'Location Insights',
       description: 'Geographic distribution analysis with remote work classification and trend tracking',
       metric: '50+ locations tracked'
     },
     {
       id: 4,
-      icon: '🎯',
+      icon: 'business',
       title: 'Department Analysis',
       description: 'Smart department classification with growth trend analysis and hiring patterns',
       metric: '15+ departments classified'
     },
     {
       id: 5,
-      icon: '⚡',
+      icon: 'speed',
       title: 'Real-time Data',
-      description: 'Live job scraping from Greenhouse-powered career pages with instant analytics',
+      description: 'Live job scraping from multiple career platforms with instant analytics',
       metric: '<2min processing time'
     },
     {
       id: 6,
-      icon: '📈',
+      icon: 'trending_up',
       title: 'Competitive Analysis',
       description: 'Compare talent strategies across companies with market positioning insights',
       metric: 'Multi-company benchmarking'
@@ -50,22 +50,36 @@ const LandingPage = ({ onStartAnalyzing }) => {
   ];
 
   const topCompanies = [
-    { name: 'OpenAI', logo: '🤖', jobs: '45+ roles' },
-    { name: 'Anthropic', logo: '⚡', jobs: '32+ roles' },
-    { name: 'Stripe', logo: '💳', jobs: '67+ roles' },
-    { name: 'Notion', logo: '📝', jobs: '28+ roles' },
-    { name: 'Canva', logo: '🎨', jobs: '89+ roles' },
-    { name: 'Ramp', logo: '📊', jobs: '41+ roles' }
-  ];
-
-  const analytics = [
-    { name: 'Department Distribution', description: 'Interactive doughnut chart showing role distribution' },
-    { name: 'Salary Transparency', description: 'Pie chart analyzing salary disclosure patterns' },
-    { name: 'Location Analysis', description: 'Bar chart mapping geographic talent distribution' },
-    { name: 'Top Paying Roles', description: 'Ranked list of highest compensation positions' },
-    { name: 'Role Classification', description: 'Smart categorization with growth metrics' },
-    { name: 'Hiring Trends', description: 'Time-series analysis of recruitment patterns' },
-    { name: 'Remote Work Index', description: 'Remote vs on-site opportunity breakdown' }
+    {
+      name: 'OpenAI',
+      logo: 'https://logo.clearbit.com/openai.com',
+      jobs: '45+ roles'
+    },
+    {
+      name: 'Anthropic',
+      logo: 'https://logo.clearbit.com/anthropic.com',
+      jobs: '32+ roles'
+    },
+    {
+      name: 'Stripe',
+      logo: 'https://logo.clearbit.com/stripe.com',
+      jobs: '67+ roles'
+    },
+    {
+      name: 'Notion',
+      logo: 'https://logo.clearbit.com/notion.so',
+      jobs: '28+ roles'
+    },
+    {
+      name: 'Canva',
+      logo: 'https://logo.clearbit.com/canva.com',
+      jobs: '89+ roles'
+    },
+    {
+      name: 'Ramp',
+      logo: 'https://logo.clearbit.com/ramp.com',
+      jobs: '41+ roles'
+    }
   ];
 
   return (
@@ -81,7 +95,7 @@ const LandingPage = ({ onStartAnalyzing }) => {
             <span className="highlight"> Strategic Intelligence</span>
           </h1>
           <p className="hero-description">
-            Scrape, analyze, and benchmark talent data from any Greenhouse-powered company.
+            Scrape, analyze, and benchmark talent data from any company's career platform.
             Get salary insights, location distribution, and competitive intelligence in minutes.
           </p>
           <div className="hero-stats">
@@ -100,12 +114,8 @@ const LandingPage = ({ onStartAnalyzing }) => {
           </div>
           <div className="hero-actions">
             <button className="cta-primary" onClick={onStartAnalyzing}>
-              <span className="cta-icon">🎯</span>
+              <span className="material-icons cta-icon">rocket_launch</span>
               Start Analyzing
-            </button>
-            <button className="cta-secondary">
-              <span className="cta-icon">📊</span>
-              View Demo
             </button>
           </div>
         </div>
@@ -154,31 +164,12 @@ const LandingPage = ({ onStartAnalyzing }) => {
               onMouseEnter={() => setHoveredFeature(feature.id)}
               onMouseLeave={() => setHoveredFeature(null)}
             >
-              <div className="feature-icon">{feature.icon}</div>
+              <div className="feature-icon">
+                <span className="material-icons">{feature.icon}</span>
+              </div>
               <h3 className="feature-title">{feature.title}</h3>
               <p className="feature-description">{feature.description}</p>
               <div className="feature-metric">{feature.metric}</div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Analytics Section */}
-      <section className="analytics-section">
-        <div className="section-header">
-          <h2 className="section-title">7 Powerful Analytics Charts</h2>
-          <p className="section-description">
-            Transform raw job data into actionable insights with our comprehensive analytics suite
-          </p>
-        </div>
-        <div className="analytics-grid">
-          {analytics.map((analytic, index) => (
-            <div key={index} className="analytic-item">
-              <div className="analytic-number">{String(index + 1).padStart(2, '0')}</div>
-              <div className="analytic-content">
-                <h4 className="analytic-name">{analytic.name}</h4>
-                <p className="analytic-description">{analytic.description}</p>
-              </div>
             </div>
           ))}
         </div>
@@ -195,58 +186,31 @@ const LandingPage = ({ onStartAnalyzing }) => {
         <div className="companies-grid">
           {topCompanies.map((company, index) => (
             <div key={index} className="company-card">
-              <div className="company-logo">{company.logo}</div>
+              <div className="company-logo">
+                <img
+                  src={company.logo}
+                  alt={`${company.name} logo`}
+                  onError={(e) => {
+                    e.target.style.display = 'none';
+                    e.target.nextSibling.style.display = 'flex';
+                  }}
+                />
+                <div className="logo-fallback" style={{ display: 'none' }}>
+                  <span className="material-icons">business</span>
+                </div>
+              </div>
               <div className="company-info">
                 <h4 className="company-name">{company.name}</h4>
                 <p className="company-jobs">{company.jobs}</p>
               </div>
               <div className="company-action">
                 <button className="analyze-btn" onClick={onStartAnalyzing}>
-                  Analyze →
+                  <span>Analyze</span>
+                  <span className="material-icons">arrow_forward</span>
                 </button>
               </div>
             </div>
           ))}
-        </div>
-      </section>
-
-      {/* Value Props Section */}
-      <section className="value-props">
-        <div className="value-prop">
-          <div className="prop-icon">💡</div>
-          <h3 className="prop-title">Salary Transparency</h3>
-          <p className="prop-description">
-            Uncover hidden salary data and compensation ranges across any company's entire job catalog
-          </p>
-        </div>
-        <div className="value-prop">
-          <div className="prop-icon">📊</div>
-          <h3 className="prop-title">Market Insights</h3>
-          <p className="prop-description">
-            Understand hiring patterns, location strategies, and department growth across industries
-          </p>
-        </div>
-        <div className="value-prop">
-          <div className="prop-icon">⚖️</div>
-          <h3 className="prop-title">Competitive Analysis</h3>
-          <p className="prop-description">
-            Benchmark talent strategies and identify opportunities in the competitive landscape
-          </p>
-        </div>
-      </section>
-
-      {/* CTA Section */}
-      <section className="final-cta">
-        <div className="cta-content">
-          <h2 className="cta-title">Ready to Transform Your Talent Intelligence?</h2>
-          <p className="cta-description">
-            Join HR professionals and talent analysts using Talent AI to make data-driven hiring decisions
-          </p>
-          <button className="cta-primary large" onClick={onStartAnalyzing}>
-            <span className="cta-icon">🚀</span>
-            Start Analyzing Now
-          </button>
-          <p className="cta-note">Free to use • No signup required • Instant results</p>
         </div>
       </section>
     </div>
