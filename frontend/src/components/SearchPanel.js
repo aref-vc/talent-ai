@@ -13,7 +13,7 @@ const EXAMPLE_COMPANIES = [
   { name: 'Canva', url: 'https://www.lifeatcanva.com/en/jobs/' },
   { name: 'Scale AI', url: 'https://job-boards.greenhouse.io/scaleai' },
   { name: 'Ramp', url: 'https://jobs.ashbyhq.com/ramp' },
-  { name: 'Rippling', url: 'https://job-boards.greenhouse.io/rippling' },
+  { name: 'Rippling', url: 'https://www.rippling.com/careers/open-roles' },
 ];
 
 function SearchPanel({ onScrape, recentCompanies, onLoadCompany }) {

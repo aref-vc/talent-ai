@@ -37,6 +37,8 @@ class TalentScraper:
             return 'databricks'
         elif 'lifeatcanva.com' in url or 'canva.com' in url:
             return 'canva'
+        elif 'rippling.com' in url or 'ats.rippling.com' in url:
+            return 'rippling'
         elif 'lever.co' in url:
             return 'lever'
         elif 'workable.com' in url:
@@ -166,6 +168,8 @@ class TalentScraper:
             return await self.scrape_databricks_jobs(company_url, fetch_details, max_detail_fetches)
         elif provider == 'canva':
             return await self.scrape_canva_jobs(company_url, fetch_details, max_detail_fetches)
+        elif provider == 'rippling':
+            return await self.scrape_rippling_jobs(company_url, fetch_details, max_detail_fetches)
         else:
             # Default to Greenhouse strategy for greenhouse and unknown providers
             return await self.scrape_greenhouse_jobs(company_url, fetch_details, max_detail_fetches)
@@ -787,6 +791,367 @@ class TalentScraper:
             }
         except Exception as e:
             logger.error(f"Error parsing Canva job link: {e}")
+            return None
+
+    async def scrape_rippling_jobs(self, company_url: str, fetch_details: bool = True, max_detail_fetches: int = 20) -> List[Dict]:
+        """Scrape jobs from Rippling's ATS at rippling.com/careers"""
+        page = await self.context.new_page()
+        jobs = []
+
+        try:
+            logger.info(f"Scraping Rippling site: {company_url}")
+            await page.goto(company_url, wait_until='domcontentloaded', timeout=30000)
+
+            # Wait for dynamic content to load
+            await page.wait_for_timeout(5000)
+
+            # Scroll to load all jobs
+            await page.evaluate('window.scrollTo(0, document.body.scrollHeight)')
+            await page.wait_for_timeout(2000)
+
+            # Rippling-specific selectors for their ATS
+            job_selectors = [
+                'a[href*="ats.rippling.com"]',  # Links to ATS
+                'a[href*="/rippling/jobs/"]',   # Job links
+                '.job-card',
+                '.job-listing',
+                '.role',
+                '.position',
+                'div[class*="JobCard"]',
+                'div[class*="jobCard"]',
+                'article[class*="job"]',
+                '[data-testid="job-card"]',
+                '[role="listitem"] a',
+                'div[class*="opening"]',
+                'h3 > a',  # Job titles in headers
+                'h4 > a',
+                'li a[href*="rippling"]',
+                'div[class*="role"] a'
+            ]
+
+            job_elements = None
+            for selector in job_selectors:
+                job_elements = await page.query_selector_all(selector)
+                if job_elements and len(job_elements) > 0:
+                    # Filter out non-job elements
+                    valid_elements = []
+                    for elem in job_elements:
+                        text = await elem.text_content()
+                        if text and len(text.strip()) > 5 and not any(skip in text.lower() for skip in ['cookie', 'privacy', 'terms', 'careers at', 'benefits', 'perks', 'about', 'blog', 'resources']):
+                            valid_elements.append(elem)
+
+                    if valid_elements:
+                        job_elements = valid_elements
+                        logger.info(f"Found {len(job_elements)} jobs using Rippling selector: {selector}")
+                        break
+
+            if not job_elements:
+                # Try to find job links by pattern in HTML
+                content = await page.content()
+                soup = BeautifulSoup(content, 'html.parser')
+
+                job_links = []
+                all_links = soup.find_all('a', href=True)
+                for link in all_links:
+                    href = link['href']
+                    text = link.get_text(strip=True)
+                    # Check if it's likely a job link (Rippling uses their ATS domain)
+                    if text and len(text) > 5 and (
+                        'ats.rippling.com' in href or
+                        '/rippling/jobs/' in href
+                    ) and not any(skip in text.lower() for skip in ['cookie', 'privacy', 'terms', 'careers', 'benefits']):
+                        job_links.append(link)
+
+                if job_links:
+                    logger.info(f"Found {len(job_links)} job links via href pattern")
+                    for link in job_links:
+                        job = await self.parse_rippling_job_link(link, page)
+                        if job:
+                            jobs.append(job)
+
+            # Parse job elements
+            detail_fetch_count = 0
+            for i, element in enumerate(job_elements):
+                try:
+                    job = await self.parse_rippling_job_element(element, page)
+                    if job:
+                        # Try to get salary and more details from job detail page
+                        if fetch_details and job.get('url') and detail_fetch_count < max_detail_fetches:
+                            try:
+                                logger.info(f"Fetching details for Rippling job {i+1}/{len(job_elements)}: {job['title'][:30]}...")
+                                details = await self.scrape_rippling_job_details(job['url'])
+                                # Update job with details
+                                if details.get('salary'):
+                                    job['salary'] = details['salary']
+                                    job['salary_min'] = details['salary']['min']
+                                    job['salary_max'] = details['salary']['max']
+                                    logger.info(f"Found salary: ${details['salary']['min']:,} - ${details['salary']['max']:,}")
+                                if details.get('location') and job['location'] == "Not specified":
+                                    job['location'] = details['location']
+                                if details.get('department') and job['department'] == "Not specified":
+                                    job['department'] = details['department']
+                                detail_fetch_count += 1
+                            except Exception as e:
+                                logger.debug(f"Could not fetch job details: {e}")
+                        jobs.append(job)
+                except Exception as e:
+                    logger.error(f"Error parsing Rippling job element: {e}")
+                    continue
+
+            logger.info(f"Scraped {len(jobs)} jobs from Rippling site: {company_url}")
+
+        except Exception as e:
+            logger.error(f"Error scraping Rippling site {company_url}: {e}")
+        finally:
+            await page.close()
+
+        return jobs
+
+    async def scrape_rippling_job_details(self, job_url: str) -> Dict:
+        """Scrape detailed information from a Rippling ATS job page"""
+        page = await self.context.new_page()
+        details = {}
+
+        try:
+            logger.info(f"Fetching Rippling job details from: {job_url}")
+            await page.goto(job_url, wait_until='domcontentloaded', timeout=30000)
+
+            # Wait for content to load
+            await page.wait_for_timeout(3000)
+
+            content = await page.content()
+            soup = BeautifulSoup(content, 'html.parser')
+
+            # Extract salary from various possible locations
+            salary = None
+
+            # Method 1: Look for compensation/salary sections
+            for section in soup.find_all(['div', 'section', 'p', 'li', 'span', 'dd']):
+                section_text = section.get_text()
+                if '$' in section_text and ('per year' in section_text.lower() or 'annually' in section_text.lower() or '-' in section_text or '–' in section_text):
+                    salary = self.extract_salary(section_text)
+                    if salary:
+                        details['salary'] = salary
+                        break
+
+            # Method 2: Look for structured salary data
+            if not salary:
+                salary_patterns = [
+                    r'Salary Range:?\s*\$[\d,]+\s*-\s*\$[\d,]+',
+                    r'Compensation:?\s*\$[\d,]+\s*-\s*\$[\d,]+',
+                    r'Pay Range:?\s*\$[\d,]+\s*-\s*\$[\d,]+',
+                    r'Base Salary:?\s*\$[\d,]+\s*-\s*\$[\d,]+',
+                ]
+
+                full_text = soup.get_text()
+                for pattern in salary_patterns:
+                    match = re.search(pattern, full_text, re.IGNORECASE)
+                    if match:
+                        salary = self.extract_salary(match.group(0))
+                        if salary:
+                            details['salary'] = salary
+                            break
+
+            # Extract location
+            location_elem = soup.find(text=re.compile(r'Location:', re.I))
+            if location_elem:
+                location = location_elem.parent.get_text().replace('Location:', '').strip()
+                details['location'] = location
+
+            # Extract department
+            dept_elem = soup.find(text=re.compile(r'Department:|Team:', re.I))
+            if dept_elem:
+                department = dept_elem.parent.get_text().replace('Department:', '').replace('Team:', '').strip()
+                details['department'] = department
+
+        except Exception as e:
+            logger.error(f"Error fetching Rippling job details: {e}")
+        finally:
+            await page.close()
+
+        return details
+
+    async def parse_rippling_job_element(self, element, page) -> Optional[Dict]:
+        """Parse a single Rippling job element"""
+        try:
+            # Get full text and HTML
+            full_text = await element.text_content()
+            if not full_text:
+                return None
+
+            html = await element.inner_html()
+            soup = BeautifulSoup(html, 'html.parser')
+
+            # Get job title
+            title = None
+            title_elem = soup.find(['h3', 'h4', 'h2', 'strong'])
+            if title_elem:
+                title = title_elem.get_text(strip=True)
+            else:
+                # Try to find the first link text
+                link = soup.find('a')
+                if link:
+                    title = link.get_text(strip=True)
+
+            if not title:
+                # Get first non-empty line
+                lines = [line.strip() for line in full_text.strip().split('\n') if line.strip()]
+                if lines:
+                    title = lines[0]
+
+            if not title:
+                return None
+
+            # Get job URL
+            url = None
+            element_href = await element.get_attribute('href')
+            if element_href:
+                url = element_href
+                if url and not url.startswith('http'):
+                    # Construct full URL for Rippling ATS
+                    if 'ats.rippling.com' not in url:
+                        url = f"https://ats.rippling.com{url}" if url.startswith('/') else f"https://ats.rippling.com/{url}"
+            else:
+                # Look for a link within the element
+                link = soup.find('a', href=True)
+                if link:
+                    url = link['href']
+                    if not url.startswith('http'):
+                        if 'ats.rippling.com' not in url:
+                            url = f"https://ats.rippling.com{url}" if url.startswith('/') else f"https://ats.rippling.com/{url}"
+
+            # Try to extract location from the text
+            location = "Not specified"
+
+            # Look for location patterns
+            location_patterns = [
+                r'Location:\s*([^,\n]+)',
+                r'Based in:\s*([^,\n]+)',
+                r'Office:\s*([^,\n]+)',
+                r'\(([^)]+)\)',  # Location in parentheses
+            ]
+
+            for pattern in location_patterns:
+                match = re.search(pattern, full_text, re.IGNORECASE)
+                if match:
+                    location = match.group(1).strip()
+                    break
+
+            # Check for common cities
+            if location == "Not specified":
+                cities = ['San Francisco', 'New York', 'Austin', 'London', 'Remote', 'Bangalore', 'Dublin', 'Toronto']
+                for city in cities:
+                    if city in full_text:
+                        location = city
+                        break
+
+            # Try to extract department from the text
+            department = "Not specified"
+            text_lower = full_text.lower()
+
+            # Common department patterns
+            if 'engineering' in text_lower or 'developer' in text_lower or 'software' in text_lower:
+                department = "Engineering"
+            elif 'design' in text_lower or 'ux' in text_lower or 'ui' in text_lower:
+                department = "Design"
+            elif 'product' in text_lower and 'manager' in text_lower:
+                department = "Product"
+            elif 'sales' in text_lower or 'account' in text_lower:
+                department = "Sales"
+            elif 'marketing' in text_lower or 'growth' in text_lower:
+                department = "Marketing"
+            elif 'data' in text_lower or 'analytics' in text_lower:
+                department = "Data"
+            elif 'people' in text_lower or 'hr' in text_lower or 'recruiting' in text_lower:
+                department = "People"
+            elif 'finance' in text_lower or 'accounting' in text_lower:
+                department = "Finance"
+            elif 'legal' in text_lower or 'compliance' in text_lower:
+                department = "Legal"
+            elif 'operations' in text_lower or 'ops' in text_lower:
+                department = "Operations"
+            elif 'customer' in text_lower and ('success' in text_lower or 'support' in text_lower):
+                department = "Customer Success"
+
+            # Try to extract salary (though it's usually on detail page)
+            salary = self.extract_salary(full_text)
+
+            return {
+                'title': title,
+                'url': url,
+                'location': location,
+                'department': department,
+                'salary': salary,
+                'salary_min': salary['min'] if salary else None,
+                'salary_max': salary['max'] if salary else None,
+                'raw_text': full_text[:500],
+                'scraped_at': datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error parsing Rippling job element: {e}")
+            return None
+
+    async def parse_rippling_job_link(self, link, page) -> Optional[Dict]:
+        """Parse a job from a link element found in Rippling's HTML"""
+        try:
+            title = link.get_text(strip=True)
+            url = link.get('href')
+
+            if not url.startswith('http'):
+                if 'ats.rippling.com' not in url:
+                    url = f"https://ats.rippling.com{url}" if url.startswith('/') else f"https://ats.rippling.com/{url}"
+
+            # Try to extract location from title or parent
+            location = "Not specified"
+
+            # Check for location in parentheses in title
+            if '(' in title and ')' in title:
+                match = re.search(r'\(([^)]+)\)', title)
+                if match:
+                    potential_location = match.group(1).strip()
+                    # Check if it's likely a location
+                    if any(loc_word in potential_location.lower() for loc_word in ['remote', 'office', 'francisco', 'york', 'austin']):
+                        location = potential_location
+                        title = title.replace(match.group(0), '').strip()
+
+            # Try to infer department from title
+            department = "Not specified"
+            title_lower = title.lower()
+
+            if 'engineering' in title_lower or 'developer' in title_lower or 'software' in title_lower:
+                department = "Engineering"
+            elif 'design' in title_lower or 'ux' in title_lower or 'ui' in title_lower:
+                department = "Design"
+            elif 'product' in title_lower and 'manager' in title_lower:
+                department = "Product"
+            elif 'sales' in title_lower or 'account' in title_lower:
+                department = "Sales"
+            elif 'marketing' in title_lower or 'growth' in title_lower:
+                department = "Marketing"
+
+            # Get parent element text for additional context
+            parent_text = ""
+            parent = link.find_parent(['div', 'article', 'li'])
+            if parent:
+                parent_text = parent.get_text(strip=True)
+                # Try to extract salary from parent text (rare but possible)
+                salary = self.extract_salary(parent_text)
+            else:
+                salary = None
+
+            return {
+                'title': title,
+                'url': url,
+                'location': location,
+                'department': department,
+                'salary': salary,
+                'salary_min': salary['min'] if salary else None,
+                'salary_max': salary['max'] if salary else None,
+                'raw_text': parent_text[:500] if parent_text else title,
+                'scraped_at': datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Error parsing Rippling job link: {e}")
             return None
 
     async def scrape_stripe_jobs(self, company_url: str, fetch_details: bool = True, max_detail_fetches: int = 20) -> List[Dict]:
